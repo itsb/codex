@@ -1,0 +1,234 @@
+name: itsb-codex-release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Semver version to release (for example 0.153.4-tmux.1)"
+        required: true
+        type: string
+      publish_npm:
+        description: "Publish @itsb/codex and platform packages to npm"
+        required: true
+        default: false
+        type: boolean
+  push:
+    tags:
+      - "itsb-v*.*.*"
+
+permissions:
+  contents: write
+
+env:
+  CODEX_REPO_ROOT: ${{ github.workspace }}
+
+jobs:
+  build:
+    name: Build ${{ matrix.target }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-14
+            target: aarch64-apple-darwin
+            os: darwin
+            cpu: arm64
+            npm_tag: darwin-arm64
+          - runner: ubuntu-24.04
+            target: x86_64-unknown-linux-musl
+            os: linux
+            cpu: x64
+            npm_tag: linux-x64
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Install Linux build dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y \
+            binutils pkg-config libcap-dev
+
+      - name: Configure musl toolchain
+        if: runner.os == 'Linux'
+        env:
+          TARGET: ${{ matrix.target }}
+        run: |
+          mkdir -p "$GITHUB_WORKSPACE/.cargo-home/bin"
+          echo "CARGO_HOME=$GITHUB_WORKSPACE/.cargo-home" >> "$GITHUB_ENV"
+          echo "$GITHUB_WORKSPACE/.cargo-home/bin" >> "$GITHUB_PATH"
+          : > "$GITHUB_WORKSPACE/.cargo-home/config.toml"
+
+      - name: Install Zig
+        if: runner.os == 'Linux'
+        uses: mlugg/setup-zig@v2
+        with:
+          version: 0.14.0
+          use-cache: true
+
+      - name: Install musl build tools
+        if: runner.os == 'Linux'
+        env:
+          TARGET: ${{ matrix.target }}
+        run: bash .github/scripts/install-musl-build-tools.sh
+
+      - name: Disable aws-lc jitter entropy (musl)
+        if: runner.os == 'Linux'
+        run: echo "AWS_LC_SYS_NO_JITTER_ENTROPY=1" >> "$GITHUB_ENV"
+
+      - name: Configure rusty_v8 artifacts
+        uses: ./.github/actions/setup-rusty-v8
+        with:
+          target: ${{ matrix.target }}
+
+      - name: Determine version
+        id: version
+        shell: bash
+        run: |
+          if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
+            version="${GITHUB_REF_NAME#itsb-v}"
+          else
+            version="${{ inputs.version }}"
+          fi
+          [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+([-.+][0-9A-Za-z.-]+)?$ ]]
+          echo "value=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Build canonical Codex package
+        env:
+          VERSION: ${{ steps.version.outputs.value }}
+          TARGET: ${{ matrix.target }}
+        run: |
+          mkdir -p dist package
+          python3 scripts/build_codex_package.py \
+            --target "$TARGET" \
+            --package-version "$VERSION" \
+            --cargo-profile release \
+            --package-dir package \
+            --archive-output "dist/codex-package-$TARGET.tar.gz" \
+            --force
+
+      - name: Build self-contained platform npm package
+        env:
+          VERSION: ${{ steps.version.outputs.value }}
+          TARGET: ${{ matrix.target }}
+          OS_NAME: ${{ matrix.os }}
+          CPU: ${{ matrix.cpu }}
+          NPM_TAG: ${{ matrix.npm_tag }}
+        shell: bash
+        run: |
+          stage="npm-stage"
+          mkdir -p "$stage/bin" "$stage/vendor/$TARGET"
+          # The launcher is generated from the upstream launcher with the fork's
+          # package scope, while retaining its local vendor fallback.
+          sed 's/@openai\/codex/@itsb\/codex/g' \
+            codex-cli/bin/codex.js > "$stage/bin/codex.js"
+          cp -R package/. "$stage/vendor/$TARGET/"
+          cp README.md "$stage/README.md"
+          node -e '
+            const fs = require("fs");
+            const p = {
+              name: `@itsb/codex-${process.env.NPM_TAG}`,
+              version: `${process.env.VERSION}-${process.env.NPM_TAG}`,
+              description: "Codex CLI (native platform package)",
+              license: "Apache-2.0",
+              type: "module",
+              bin: { codex: "bin/codex.js" },
+              files: ["bin", "vendor"],
+              os: [process.env.OS_NAME],
+              cpu: [process.env.CPU]
+            };
+            fs.writeFileSync("npm-stage/package.json", JSON.stringify(p, null, 2) + "\n");
+          '
+          npm pack ./"$stage" --pack-destination dist
+          mv dist/itsb-codex-${NPM_TAG}-*.tgz "dist/itsb-codex-${NPM_TAG}.tgz"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: itsb-${{ matrix.npm_tag }}
+          path: |
+            dist/codex-package-${{ matrix.target }}.tar.gz
+            dist/itsb-codex-${{ matrix.npm_tag }}.tgz
+
+  release:
+    needs: build
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          pattern: itsb-*
+          merge-multiple: true
+
+      - name: Determine version and tag
+        id: version
+        shell: bash
+        run: |
+          if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
+            version="${GITHUB_REF_NAME#itsb-v}"
+            tag="$GITHUB_REF_NAME"
+          else
+            version="${{ inputs.version }}"
+            tag="itsb-v$version"
+          fi
+          echo "value=$version" >> "$GITHUB_OUTPUT"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+
+      - name: Assemble @itsb/codex launcher package
+        env:
+          VERSION: ${{ steps.version.outputs.value }}
+        run: |
+          mkdir -p root/bin
+          sed 's/@openai\/codex/@itsb\/codex/g' \
+            codex-cli/bin/codex.js > root/bin/codex.js
+          cp README.md root/README.md
+          node -e '
+            const fs = require("fs");
+            const p = {
+              name: "@itsb/codex",
+              version: process.env.VERSION,
+              description: "Codex CLI",
+              license: "Apache-2.0",
+              type: "module",
+              bin: { codex: "bin/codex.js" },
+              files: ["bin"],
+              optionalDependencies: {
+                [`@itsb/codex-darwin-arm64`]: `${process.env.VERSION}-darwin-arm64`,
+                [`@itsb/codex-linux-x64`]: `${process.env.VERSION}-linux-x64`
+              }
+            };
+            fs.writeFileSync("root/package.json", JSON.stringify(p, null, 2) + "\n");
+          '
+          npm pack ./root --pack-destination dist
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.tag }}
+          name: ${{ steps.version.outputs.value }}
+          generate_release_notes: true
+          files: dist/*
+
+      - name: Configure npm
+        if: ${{ inputs.publish_npm == true }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+
+      - name: Publish packages to npm
+        if: ${{ inputs.publish_npm == true }}
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          VERSION: ${{ steps.version.outputs.value }}
+        run: |
+          npm publish "dist/itsb-codex-darwin-arm64.tgz" --access public
+          npm publish "dist/itsb-codex-linux-x64.tgz" --access public
+          npm publish "dist/itsb-codex-${VERSION}.tgz" --access public
