@@ -56,20 +56,6 @@ jobs:
           sudo DEBIAN_FRONTEND=noninteractive apt-get install -y \
             binutils pkg-config libcap-dev
 
-      - name: Configure musl toolchain
-        if: runner.os == 'Linux'
-        env:
-          TARGET: ${{ matrix.target }}
-        run: |
-          mkdir -p "$GITHUB_WORKSPACE/.cargo-home/bin"
-          echo "CARGO_HOME=$GITHUB_WORKSPACE/.cargo-home" >> "$GITHUB_ENV"
-          echo "$GITHUB_WORKSPACE/.cargo-home/bin" >> "$GITHUB_PATH"
-          : > "$GITHUB_WORKSPACE/.cargo-home/config.toml"
-
-      - name: Install Rust target in hermetic toolchain
-        if: runner.os == 'Linux'
-        run: rustup target add ${{ matrix.target }}
-
       - name: Install Zig
         if: runner.os == 'Linux'
         uses: mlugg/setup-zig@v2
