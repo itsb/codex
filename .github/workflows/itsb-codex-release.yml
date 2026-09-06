@@ -45,7 +45,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0, matching codex-rs/rust-toolchain.toml
         with:
           targets: ${{ matrix.target }}
 
@@ -54,6 +54,7 @@ jobs:
       # the `targets` input (notably on fresh hosted runners).
       - name: Verify Rust target
         if: runner.os == 'Linux'
+        working-directory: codex-rs
         env:
           TARGET: ${{ matrix.target }}
         run: |
@@ -91,12 +92,14 @@ jobs:
 
       - name: Determine version
         id: version
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
         shell: bash
         run: |
           if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
             version="${GITHUB_REF_NAME#itsb-v}"
           else
-            version="${{ inputs.version }}"
+            version="$INPUT_VERSION"
           fi
           [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+([-.+][0-9A-Za-z.-]+)?$ ]]
           echo "value=$version" >> "$GITHUB_OUTPUT"
@@ -157,6 +160,24 @@ jobs:
             dist/codex-package-${{ matrix.target }}.tar.gz
             dist/itsb-codex-${{ matrix.npm_tag }}.tgz
 
+      - name: Smoke test packaged npm installation
+        shell: bash
+        run: |
+          npm install --prefix "$RUNNER_TEMP/codex-smoke" --no-audit --no-fund \
+            "./dist/itsb-codex-${{ matrix.npm_tag }}.tgz"
+          "$RUNNER_TEMP/codex-smoke/node_modules/.bin/codex" --version
+          "$RUNNER_TEMP/codex-smoke/node_modules/.bin/codex" --help > /dev/null
+          package/bin/codex-code-mode-host --help > /dev/null
+
+      - name: Release validated platform independently
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: itsb-v${{ steps.version.outputs.value }}-${{ matrix.npm_tag }}
+          target_commitish: ${{ github.sha }}
+          name: Codex ${{ steps.version.outputs.value }} (${{ matrix.npm_tag }})
+          prerelease: true
+          files: dist/*
+
   release:
     needs: build
     runs-on: ubuntu-24.04
@@ -170,13 +191,15 @@ jobs:
 
       - name: Determine version and tag
         id: version
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
         shell: bash
         run: |
           if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
             version="${GITHUB_REF_NAME#itsb-v}"
             tag="$GITHUB_REF_NAME"
           else
-            version="${{ inputs.version }}"
+            version="$INPUT_VERSION"
             tag="itsb-v$version"
           fi
           echo "value=$version" >> "$GITHUB_OUTPUT"
