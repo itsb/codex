@@ -49,6 +49,17 @@ jobs:
         with:
           targets: ${{ matrix.target }}
 
+      # Keep this explicit: the package builder invokes Cargo itself, and the
+      # target component can be absent even when the toolchain action accepted
+      # the `targets` input (notably on fresh hosted runners).
+      - name: Verify Rust target
+        if: runner.os == 'Linux'
+        env:
+          TARGET: ${{ matrix.target }}
+        run: |
+          rustup target add "$TARGET"
+          rustup target list --installed
+
       - name: Install Linux build dependencies
         if: runner.os == 'Linux'
         run: |
