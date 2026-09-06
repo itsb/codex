@@ -66,6 +66,10 @@ jobs:
           echo "$GITHUB_WORKSPACE/.cargo-home/bin" >> "$GITHUB_PATH"
           : > "$GITHUB_WORKSPACE/.cargo-home/config.toml"
 
+      - name: Install Rust target in hermetic toolchain
+        if: runner.os == 'Linux'
+        run: rustup target add ${{ matrix.target }}
+
       - name: Install Zig
         if: runner.os == 'Linux'
         uses: mlugg/setup-zig@v2
