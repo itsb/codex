@@ -1,4 +1,5 @@
 use super::WebLinkDisplay;
+use super::tmux_hyperlinks::TmuxHyperlinks;
 use crate::markdown_render::render_markdown_lines_with_width_cwd_and_hidden_link_destinations;
 use crate::markdown_render::render_streaming_markdown_lines_with_width_and_cwd;
 use crate::terminal_hyperlinks::HyperlinkLine;
@@ -47,7 +48,11 @@ fn supporting_terminals_render_only_the_styled_label_and_keep_its_target() {
         TerminalName::GnomeTerminal,
         TerminalName::Vte,
     ] {
-        let display = WebLinkDisplay::for_terminal(&terminal(name), /*term*/ None);
+        let display = WebLinkDisplay::for_terminal(
+            &terminal(name),
+            /*term*/ None,
+            TmuxHyperlinks::Unknown,
+        );
         for (markdown, label) in [
             ("[label](https://example.com)", "label".cyan().underlined()),
             (
@@ -106,7 +111,7 @@ fn unknown_terminals_and_multiplexers_keep_visible_destinations() {
             render(
                 markdown,
                 /*width*/ 80,
-                WebLinkDisplay::for_terminal(&terminal, term),
+                WebLinkDisplay::for_terminal(&terminal, term, TmuxHyperlinks::Unknown),
             ),
             expected,
         );
@@ -191,4 +196,63 @@ fn label_only_and_fallback_presentations_snapshot() {
     let presentations = [WebLinkDisplay::LabelOnly, WebLinkDisplay::WithDestination]
         .map(|display| Text::from(visible_lines(render(markdown, /*width*/ 40, display))));
     assert_debug_snapshot!(presentations);
+}
+
+#[test]
+fn tmux_capability_probe_controls_visible_web_destinations() {
+    let mut tmux = terminal(TerminalName::Unknown);
+    tmux.multiplexer = Some(Multiplexer::Tmux { version: None });
+    let markdown =
+        "[Ghostty mouse behavior](https://ghostty.org/docs/config/reference#mouse-shift-capture)";
+    for term in ["tmux-256color", "screen-256color"] {
+        for (support, expected) in [
+            (TmuxHyperlinks::Supported, WebLinkDisplay::LabelOnly),
+            (TmuxHyperlinks::Unknown, WebLinkDisplay::WithDestination),
+        ] {
+            assert_eq!(
+                render(
+                    markdown,
+                    /*width*/ 80,
+                    WebLinkDisplay::for_terminal(&tmux, Some(term), support)
+                ),
+                render(markdown, /*width*/ 80, expected),
+            );
+        }
+    }
+    let presentations = [TmuxHyperlinks::Supported, TmuxHyperlinks::Unknown]
+        .map(|support| {
+            let display = WebLinkDisplay::for_terminal(&tmux, Some("tmux-256color"), support);
+            visible_lines(render(markdown, /*width*/ 120, display))
+                .iter()
+                .map(ToString::to_string)
+                .collect::<Vec<_>>()
+                .join("\n")
+        })
+        .join("\n");
+    insta::assert_snapshot!(presentations, @r"
+    Ghostty mouse behavior
+    Ghostty mouse behavior (https://ghostty.org/docs/config/reference#mouse-shift-capture)
+    ");
+}
+
+#[test]
+fn successful_tmux_probe_does_not_override_other_multiplexers_or_dumb_terminals() {
+    let mut zellij = terminal(TerminalName::Ghostty);
+    zellij.multiplexer = Some(Multiplexer::Zellij { version: None });
+    let mut tmux = terminal(TerminalName::Ghostty);
+    tmux.multiplexer = Some(Multiplexer::Tmux { version: None });
+    for (terminal, term) in [(zellij, None), (tmux, Some("dumb"))] {
+        assert_eq!(
+            render(
+                "[label](https://example.com)",
+                /*width*/ 80,
+                WebLinkDisplay::for_terminal(&terminal, term, TmuxHyperlinks::Supported)
+            ),
+            render(
+                "[label](https://example.com)",
+                /*width*/ 80,
+                WebLinkDisplay::WithDestination
+            ),
+        );
+    }
 }

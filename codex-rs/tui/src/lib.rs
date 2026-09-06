@@ -975,6 +975,7 @@ pub async fn run_main(
     loader_overrides: LoaderOverrides,
     explicit_remote_endpoint: Option<RemoteAppServerEndpoint>,
 ) -> std::io::Result<AppExitInfo> {
+    markdown_render::probe_tmux_hyperlinks().await;
     match startup_orchestration::run_main_inner(
         cli,
         arg0_paths,
