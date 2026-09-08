@@ -7,7 +7,8 @@ on:
         required: true
         type: string
 permissions:
-  contents: read
+  # GitHub requires push access to read unpublished draft releases.
+  contents: write
 jobs:
   test:
     runs-on: ${{ matrix.runner }}
