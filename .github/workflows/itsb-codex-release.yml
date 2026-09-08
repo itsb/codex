@@ -8,7 +8,7 @@ on:
         required: true
         type: string
       publish_npm:
-        description: "Publish @itsb/codex and platform packages to npm"
+        description: "Publish @itsbfb/codex and platform packages to npm"
         required: true
         default: false
         type: boolean
@@ -131,16 +131,17 @@ jobs:
           mkdir -p "$stage/bin" "$stage/vendor/$TARGET"
           # The launcher is generated from the upstream launcher with the fork's
           # package scope, while retaining its local vendor fallback.
-          sed 's/@openai\/codex/@itsb\/codex/g' \
+          sed 's/@openai/@itsbfb/g' \
             codex-cli/bin/codex.js > "$stage/bin/codex.js"
           cp -R package/. "$stage/vendor/$TARGET/"
           cp README.md "$stage/README.md"
           node -e '
             const fs = require("fs");
             const p = {
-              name: `@itsb/codex-${process.env.NPM_TAG}`,
+              name: `@itsbfb/codex-${process.env.NPM_TAG}`,
               version: `${process.env.VERSION}-${process.env.NPM_TAG}`,
               description: "Codex CLI (native platform package)",
+              repository: { type: "git", url: "git+https://github.com/itsb/codex.git" },
               license: "Apache-2.0",
               type: "module",
               bin: { codex: "bin/codex.js" },
@@ -151,7 +152,7 @@ jobs:
             fs.writeFileSync("npm-stage/package.json", JSON.stringify(p, null, 2) + "\n");
           '
           npm pack ./"$stage" --pack-destination dist
-          mv dist/itsb-codex-${NPM_TAG}-*.tgz "dist/itsb-codex-${NPM_TAG}.tgz"
+          mv dist/itsbfb-codex-${NPM_TAG}-*.tgz "dist/itsb-codex-${NPM_TAG}.tgz"
 
       - uses: actions/upload-artifact@v4
         with:
@@ -205,32 +206,34 @@ jobs:
           echo "value=$version" >> "$GITHUB_OUTPUT"
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
 
-      - name: Assemble @itsb/codex launcher package
+      - name: Assemble @itsbfb/codex launcher package
         env:
           VERSION: ${{ steps.version.outputs.value }}
         run: |
           mkdir -p root/bin
-          sed 's/@openai\/codex/@itsb\/codex/g' \
+          sed 's/@openai/@itsbfb/g' \
             codex-cli/bin/codex.js > root/bin/codex.js
           cp README.md root/README.md
           node -e '
             const fs = require("fs");
             const p = {
-              name: "@itsb/codex",
+              name: "@itsbfb/codex",
               version: process.env.VERSION,
               description: "Codex CLI",
+              repository: { type: "git", url: "git+https://github.com/itsb/codex.git" },
               license: "Apache-2.0",
               type: "module",
               bin: { codex: "bin/codex.js" },
               files: ["bin"],
               optionalDependencies: {
-                [`@itsb/codex-darwin-arm64`]: `${process.env.VERSION}-darwin-arm64`,
-                [`@itsb/codex-linux-x64`]: `${process.env.VERSION}-linux-x64`
+                [`@itsbfb/codex-darwin-arm64`]: `${process.env.VERSION}-darwin-arm64`,
+                [`@itsbfb/codex-linux-x64`]: `${process.env.VERSION}-linux-x64`
               }
             };
             fs.writeFileSync("root/package.json", JSON.stringify(p, null, 2) + "\n");
           '
           npm pack ./root --pack-destination dist
+          mv "dist/itsbfb-codex-${VERSION}.tgz" "dist/itsb-codex-${VERSION}.tgz"
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
@@ -253,6 +256,6 @@ jobs:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
           VERSION: ${{ steps.version.outputs.value }}
         run: |
-          npm publish "dist/itsb-codex-darwin-arm64.tgz" --access public
-          npm publish "dist/itsb-codex-linux-x64.tgz" --access public
-          npm publish "dist/itsb-codex-${VERSION}.tgz" --access public
+          npm publish "dist/itsb-codex-darwin-arm64.tgz" --access public --tag latest
+          npm publish "dist/itsb-codex-linux-x64.tgz" --access public --tag latest
+          npm publish "dist/itsb-codex-${VERSION}.tgz" --access public --tag latest
