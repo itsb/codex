@@ -1,0 +1,51 @@
+name: Test repackaged Codex releases
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: GitHub release containing the repackaged npm tarballs
+        required: true
+        type: string
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-14
+            platform: darwin-arm64
+            target: aarch64-apple-darwin
+          - runner: ubuntu-24.04
+            platform: linux-x64
+            target: x86_64-unknown-linux-musl
+    steps:
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Download and test the actual release packages
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+          PLATFORM: ${{ matrix.platform }}
+          TARGET: ${{ matrix.target }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh release download "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --pattern "itsbfb-codex-$PLATFORM.tgz" --dir dist
+          gh release download "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --pattern 'itsbfb-codex-root.tgz' --dir dist
+          npm install --prefix "$RUNNER_TEMP/codex-test" --omit=optional --ignore-scripts --no-audit --no-fund ./dist/*.tgz
+          "$RUNNER_TEMP/codex-test/node_modules/.bin/codex" --version
+          "$RUNNER_TEMP/codex-test/node_modules/.bin/codex" --help > /dev/null
+          vendor="$RUNNER_TEMP/codex-test/node_modules/@itsbfb/codex-$PLATFORM/vendor/$TARGET"
+          "$vendor/bin/codex-code-mode-host" --help
+          "$vendor/codex-path/rg" --version
+          "$vendor/codex-resources/zsh/bin/zsh" --version
+          if [[ "$PLATFORM" == linux-* ]]; then
+            "$vendor/codex-resources/bwrap" --version
+          else
+            codesign --verify "$vendor/bin/codex"
+            codesign --verify "$vendor/bin/codex-code-mode-host"
+          fi
