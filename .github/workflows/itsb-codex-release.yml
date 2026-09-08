@@ -115,8 +115,17 @@ jobs:
             --package-version "$VERSION" \
             --cargo-profile release \
             --package-dir package \
-            --archive-output "dist/codex-package-$TARGET.tar.gz" \
             --force
+          # Match upstream release stripping. Leave bwrap untouched here:
+          # its exact bytes may be covered by the embedded sandbox digest.
+          if [[ "$TARGET" == *apple-darwin ]]; then
+            strip -S -x package/bin/codex package/bin/codex-code-mode-host
+            codesign --force --sign - package/bin/codex
+            codesign --force --sign - package/bin/codex-code-mode-host
+          else
+            strip --strip-debug --strip-unneeded package/bin/codex package/bin/codex-code-mode-host
+          fi
+          tar -czf "dist/codex-package-$TARGET.tar.gz" -C package .
 
       - name: Build self-contained platform npm package
         env:
@@ -153,6 +162,9 @@ jobs:
           '
           npm pack ./"$stage" --pack-destination dist
           mv dist/itsbfb-codex-${NPM_TAG}-*.tgz "dist/itsb-codex-${NPM_TAG}.tgz"
+          # npm wraps tarballs in base64 for upload. Keep well below its
+          # 300 MiB request-body limit, with room for metadata and encoding.
+          python3 -c 'import pathlib, sys; p = pathlib.Path(sys.argv[1]); assert p.stat().st_size < 200 * 1024 * 1024, f"npm tarball too large: {p}"' "dist/itsb-codex-${NPM_TAG}.tgz"
 
       - uses: actions/upload-artifact@v4
         with:
