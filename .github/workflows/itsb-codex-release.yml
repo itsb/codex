@@ -18,6 +18,7 @@ on:
 
 permissions:
   contents: write
+  id-token: write
 
 env:
   CODEX_REPO_ROOT: ${{ github.workspace }}
@@ -188,11 +189,13 @@ jobs:
             dist/itsb-codex-${{ matrix.npm_tag }}.tgz
 
       - name: Smoke test packaged npm installation
+        env:
+          VERSION: ${{ steps.version.outputs.value }}
         shell: bash
         run: |
           npm install --prefix "$RUNNER_TEMP/codex-smoke" --no-audit --no-fund \
             "./dist/itsb-codex-${{ matrix.npm_tag }}.tgz"
-          "$RUNNER_TEMP/codex-smoke/node_modules/.bin/codex" --version
+          test "$("$RUNNER_TEMP/codex-smoke/node_modules/.bin/codex" --version)" = "codex-cli $VERSION"
           "$RUNNER_TEMP/codex-smoke/node_modules/.bin/codex" --help > /dev/null
           package/bin/codex-code-mode-host --help > /dev/null
 
@@ -272,18 +275,27 @@ jobs:
           files: dist/*
 
       - name: Configure npm
-        if: ${{ inputs.publish_npm == true }}
+        if: ${{ github.event_name == 'push' || inputs.publish_npm == true }}
         uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 24
           registry-url: https://registry.npmjs.org
 
       - name: Publish packages to npm
-        if: ${{ inputs.publish_npm == true }}
+        if: ${{ github.event_name == 'push' || inputs.publish_npm == true }}
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
           VERSION: ${{ steps.version.outputs.value }}
         run: |
-          npm publish "dist/itsb-codex-darwin-arm64.tgz" --access public --tag latest
-          npm publish "dist/itsb-codex-linux-x64.tgz" --access public --tag latest
-          npm publish "dist/itsb-codex-${VERSION}.tgz" --access public --tag latest
+          publish_if_missing() {
+            package_name="$1"
+            package_version="$2"
+            tarball="$3"
+            if npm view "$package_name@$package_version" version >/dev/null 2>&1; then
+              echo "$package_name@$package_version already published; skipping"
+            else
+              npm publish "$tarball" --access public --tag latest
+            fi
+          }
+          publish_if_missing "@itsbfb/codex-darwin-arm64" "$VERSION-darwin-arm64" "dist/itsb-codex-darwin-arm64.tgz"
+          publish_if_missing "@itsbfb/codex-linux-x64" "$VERSION-linux-x64" "dist/itsb-codex-linux-x64.tgz"
+          publish_if_missing "@itsbfb/codex" "$VERSION" "dist/itsb-codex-${VERSION}.tgz"
