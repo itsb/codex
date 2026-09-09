@@ -109,6 +109,20 @@ jobs:
           VERSION: ${{ steps.version.outputs.value }}
           TARGET: ${{ matrix.target }}
         run: |
+          python3 - "$VERSION" <<'PY'
+          from pathlib import Path
+          import re
+          import sys
+
+          version = sys.argv[1]
+          path = Path("codex-rs/Cargo.toml")
+          text = path.read_text()
+          pattern = r'(\[workspace\.package\]\s+version\s*=\s*")[^"]+("\s*)'
+          updated, count = re.subn(pattern, rf'\g<1>{version}\g<2>', text, count=1)
+          if count != 1:
+              raise SystemExit("could not stamp workspace package version")
+          path.write_text(updated)
+          PY
           mkdir -p dist package
           python3 scripts/build_codex_package.py \
             --target "$TARGET" \
