@@ -260,8 +260,8 @@ jobs:
             };
             fs.writeFileSync("root/package.json", JSON.stringify(p, null, 2) + "\n");
           '
-          npm pack ./root --pack-destination dist
-          mv "dist/itsbfb-codex-${VERSION}.tgz" "dist/itsb-codex-${VERSION}.tgz"
+          root_tarball="$(npm pack ./root --pack-destination dist | tail -n 1)"
+          mv "dist/$root_tarball" "dist/itsb-codex-${VERSION}.tgz"
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
