@@ -241,6 +241,11 @@ jobs:
         env:
           VERSION: ${{ steps.version.outputs.value }}
         run: |
+          mkdir -p dist
+          # download-artifact may flatten uploaded paths; normalize all release
+          # assets into dist before assembling and uploading the root package.
+          find . -type f \( -name 'itsb-codex-*.tgz' -o -name 'codex-package-*.tar.gz' \) \
+            ! -path './dist/*' -exec mv {} dist/ \;
           mkdir -p root/bin
           sed 's/@openai/@itsbfb/g' \
             codex-cli/bin/codex.js > root/bin/codex.js
@@ -264,6 +269,7 @@ jobs:
             fs.writeFileSync("root/package.json", JSON.stringify(p, null, 2) + "\n");
           '
           root_tarball="$(npm pack ./root --pack-destination dist | tail -n 1)"
+          test -n "$root_tarball" && test -f "dist/$root_tarball"
           mv "dist/$root_tarball" "dist/itsb-codex-${VERSION}.tgz"
 
       - name: Create GitHub Release
