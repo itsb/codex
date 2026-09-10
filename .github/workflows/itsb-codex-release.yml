@@ -271,6 +271,11 @@ jobs:
           root_tarball="$(npm pack ./root --pack-destination dist | tail -n 1)"
           test -n "$root_tarball" && test -f "dist/$root_tarball"
           mv "dist/$root_tarball" "dist/itsb-codex-${VERSION}.tgz"
+          for asset in itsb-codex-darwin-arm64.tgz itsb-codex-linux-x64.tgz; do
+            source="$(find . -type f -name "$asset" ! -path "./dist/$asset" -print -quit)"
+            if [[ -n "$source" ]]; then cp "$source" "dist/$asset"; fi
+            test -f "dist/$asset"
+          done
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
@@ -292,6 +297,9 @@ jobs:
         env:
           VERSION: ${{ steps.version.outputs.value }}
         run: |
+          test -f "dist/itsb-codex-darwin-arm64.tgz"
+          test -f "dist/itsb-codex-linux-x64.tgz"
+          test -f "dist/itsb-codex-${VERSION}.tgz"
           publish_if_missing() {
             package_name="$1"
             package_version="$2"
