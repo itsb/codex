@@ -307,7 +307,7 @@ jobs:
             if npm view "$package_name@$package_version" version >/dev/null 2>&1; then
               echo "$package_name@$package_version already published; skipping"
             else
-              npm publish "$tarball" --access public --tag latest
+              npm publish "./$tarball" --access public --tag latest
             fi
           }
           publish_if_missing "@itsbfb/codex-darwin-arm64" "$VERSION-darwin-arm64" "dist/itsb-codex-darwin-arm64.tgz"
