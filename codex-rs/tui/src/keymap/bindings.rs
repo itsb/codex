@@ -103,6 +103,10 @@ pub(crate) struct KeymapActionId {
 }
 
 impl KeymapActionId {
+    pub(crate) fn is_refresh_colors(self) -> bool {
+        self.context == KeymapContext::Global && self.action == "refresh_colors"
+    }
+
     pub(crate) fn config_path(self) -> String {
         format!("tui.keymap.{}.{}", self.context.config_name(), self.action)
     }
@@ -254,6 +258,7 @@ define_runtime_action_bindings! {
         open_external_editor,
         copy,
         clear_terminal,
+        refresh_colors,
         toggle_vim_mode,
         toggle_fast_mode,
         toggle_raw_output,

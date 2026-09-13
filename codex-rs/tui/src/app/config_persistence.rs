@@ -1116,13 +1116,7 @@ impl App {
             return;
         }
 
-        let auto_theme_name = crate::render::highlight::adaptive_default_theme_name();
-        if let Some(theme) = crate::render::highlight::resolve_theme_by_name(
-            auto_theme_name,
-            Some(&self.local_settings.codex_home),
-        ) {
-            crate::render::highlight::set_syntax_theme(theme);
-        }
+        crate::render::highlight::set_automatic_theme();
     }
 
     pub(super) fn personality_label(personality: Personality) -> &'static str {

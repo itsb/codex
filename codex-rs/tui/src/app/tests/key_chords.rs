@@ -607,3 +607,41 @@ async fn dashboard_chord_hint_survives_refresh_and_clears_on_cancel() -> Result<
     assert_eq!(render_bottom_popup(&app.chat_widget, /*width*/ 80), before);
     Ok(())
 }
+
+#[tokio::test]
+async fn refresh_shortcut_and_chord_preserve_draft_and_dialog() -> Result<()> {
+    let (mut app, mut tui, mut app_server) = chord_app().await?;
+    let config = toml::from_str("[global]\nrefresh_colors = [\"f12\", \"f13 f14\"]")?;
+    app.keymap = RuntimeKeymap::from_config(&config).expect("valid refresh bindings");
+    app.chat_widget.apply_keymap_update(config, &app.keymap);
+    app.chat_widget.insert_str("unsent café 🦀");
+    app.chat_widget.show_selection_view(SelectionViewParams {
+        view_id: Some("refresh-dialog"),
+        title: Some("Feedback".to_string()),
+        items: vec![SelectionItem {
+            name: "Submit feedback".to_string(),
+            dismiss_on_select: true,
+            ..Default::default()
+        }],
+        ..Default::default()
+    });
+    let before = render_bottom_popup(&app.chat_widget, 80);
+    for key in [
+        KeyCode::F(12).into(),
+        KeyCode::F(13).into(),
+        KeyCode::F(14).into(),
+    ] {
+        press(&mut app, &mut tui, &mut app_server, key).await?;
+    }
+    assert_eq!(
+        app.chat_widget.composer_text_with_pending(),
+        "unsent café 🦀"
+    );
+    assert_eq!(
+        app.chat_widget
+            .selected_index_for_present_view("refresh-dialog"),
+        Some(0)
+    );
+    assert_eq!(render_bottom_popup(&app.chat_widget, 80), before);
+    Ok(())
+}

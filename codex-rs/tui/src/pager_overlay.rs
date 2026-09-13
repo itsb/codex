@@ -135,7 +135,9 @@ fn render_navigation_hints(area: Rect, buf: &mut Buffer, keymap: &PagerKeymap) {
         ("jump_bottom", &keymap.jump_bottom),
     ];
     let hints = actions
-        .chunks_exact(2)
+        .as_chunks::<2>()
+        .0
+        .iter()
         .zip(["to scroll", "to page", "to jump"])
         .map(|(actions, description)| {
             (
@@ -489,6 +491,7 @@ pub(crate) struct TranscriptOverlay {
 /// Changing any field implies a different rendered tail.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 struct LiveTailKey {
+    theme_revision: u64,
     /// Current terminal width, which affects wrapping.
     width: u16,
     /// Revision that changes on in-place active cell transcript updates.
@@ -776,6 +779,7 @@ impl TranscriptOverlay {
         compute_lines: impl FnOnce(u16) -> Option<Vec<HyperlinkLine>>,
     ) {
         let next_key = active_key.map(|key| LiveTailKey {
+            theme_revision: crate::render::highlight::syntax_theme_revision(),
             width,
             revision: key.revision,
             is_stream_continuation: key.is_stream_continuation,
@@ -948,7 +952,11 @@ impl TranscriptOverlay {
                 }
                 other => self.view.handle_key_event(tui, other),
             },
-            TuiEvent::Draw | TuiEvent::Resume | TuiEvent::Resize(_) | TuiEvent::FocusGained => {
+            TuiEvent::ColorsChanged
+            | TuiEvent::Draw
+            | TuiEvent::Resume
+            | TuiEvent::Resize(_)
+            | TuiEvent::FocusGained => {
                 tui.draw(u16::MAX, |frame| {
                     self.render(frame.area(), frame.buffer);
                 })?;
@@ -1022,7 +1030,11 @@ impl StaticOverlay {
                 }
                 other => self.view.handle_key_event(tui, other),
             },
-            TuiEvent::Draw | TuiEvent::Resume | TuiEvent::Resize(_) | TuiEvent::FocusGained => {
+            TuiEvent::ColorsChanged
+            | TuiEvent::Draw
+            | TuiEvent::Resume
+            | TuiEvent::Resize(_)
+            | TuiEvent::FocusGained => {
                 tui.draw(u16::MAX, |frame| {
                     self.render(frame.area(), frame.buffer);
                 })?;

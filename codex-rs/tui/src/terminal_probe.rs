@@ -245,6 +245,7 @@ mod imp {
     /// response from either slot returns `Ok(None)`. Both queries are sent before reading so a
     /// terminal that supports palette replies gets the full bounded window to return both values,
     /// while unsupported terminals still pay one bounded wait instead of one wait per slot.
+    #[allow(dead_code)] // Runtime Unix refreshes use the asynchronous input stream instead.
     pub(crate) fn default_colors(timeout: Duration) -> io::Result<Option<DefaultColors>> {
         let mut tty = Tty::open()?;
         tty.write_all(b"\x1B]10;?\x1B\\\x1B]11;?\x1B\\")?;

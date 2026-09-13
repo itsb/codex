@@ -56,6 +56,7 @@ pub(crate) use streaming::StreamingCodeHighlighter;
 
 static SYNTAX_SET: OnceLock<SyntaxSet> = OnceLock::new();
 static THEME: OnceLock<RwLock<Theme>> = OnceLock::new();
+static AUTOMATIC_THEME: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(true);
 static THEME_REVISION: AtomicU64 = AtomicU64::new(0);
 static THEME_OVERRIDE: OnceLock<Option<String>> = OnceLock::new();
 static CODEX_HOME: OnceLock<Option<PathBuf>> = OnceLock::new();
@@ -101,6 +102,7 @@ pub(crate) fn set_theme_override(
             codex_home.as_deref(),
         ));
     }
+    AUTOMATIC_THEME.store(name.is_none() || warning.is_some(), Ordering::Release);
     if !override_set_ok || !codex_home_set_ok {
         // This should never happen in practice — set_theme_override is only
         // called once at startup.  Keep as a debug breadcrumb in case a second
@@ -249,6 +251,7 @@ fn theme_lock() -> &'static RwLock<Theme> {
 
 /// Swap the active syntax theme at runtime and invalidate rendered-content caches.
 pub(crate) fn set_syntax_theme(theme: Theme) {
+    AUTOMATIC_THEME.store(false, Ordering::Release);
     let mut guard = match theme_lock().write() {
         Ok(guard) => guard,
         Err(poisoned) => poisoned.into_inner(),
@@ -256,6 +259,12 @@ pub(crate) fn set_syntax_theme(theme: Theme) {
     *guard = theme;
     THEME_REVISION.fetch_add(1, Ordering::Release);
 }
+
+#[path = "highlight_theme_refresh.rs"]
+mod theme_refresh;
+pub(crate) use theme_refresh::ThemePreview;
+pub(crate) use theme_refresh::refresh_terminal_colors;
+pub(crate) use theme_refresh::set_automatic_theme;
 
 /// Return the revision of the active syntax theme for rendered-content caches.
 pub(crate) fn syntax_theme_revision() -> u64 {

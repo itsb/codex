@@ -282,7 +282,7 @@ impl KeyChordMatcher {
                 return KeyChordMatch::Cancelled;
             }
             if let Some(binding) = keymap.bindings.iter().find(|binding| {
-                contexts.contains(binding.action.context)
+                (binding.action.is_refresh_colors() || contexts.contains(binding.action.context))
                     && binding.chord.prefix == pending.prefix
                     && chord_stroke_matches(binding.chord.completion, key_event)
             }) {
@@ -297,7 +297,7 @@ impl KeyChordMatcher {
             .bindings
             .iter()
             .find(|binding| {
-                contexts.contains(binding.action.context)
+                (binding.action.is_refresh_colors() || contexts.contains(binding.action.context))
                     && chord_stroke_matches(binding.chord.prefix, key_event)
             })
             .map(|binding| binding.chord.prefix)
@@ -414,7 +414,11 @@ pub(super) fn validate_chord_conflicts(keymap: &RuntimeKeymap) -> Result<(), Str
         validate_reserved_strokes(binding)?;
 
         if let Some(conflict) = runtime_action_bindings(keymap)
-            .filter(|candidate| binding.action.context.overlaps(candidate.id.context))
+            .filter(|candidate| {
+                binding.action.is_refresh_colors()
+                    || candidate.id.is_refresh_colors()
+                    || binding.action.context.overlaps(candidate.id.context)
+            })
             .find(|candidate| {
                 candidate.bindings.iter().any(|single| {
                     normalize_chord_binding(*single).parts() == binding.chord.prefix.parts()
@@ -432,7 +436,9 @@ Unbind or remap the existing shortcut before using it as a chord prefix.",
 
         for previous in &keymap.chords.bindings[..index] {
             if previous.action != binding.action
-                && previous.action.context.overlaps(binding.action.context)
+                && (previous.action.is_refresh_colors()
+                    || binding.action.is_refresh_colors()
+                    || previous.action.context.overlaps(binding.action.context))
                 && previous.chord == binding.chord
             {
                 return Err(format!(

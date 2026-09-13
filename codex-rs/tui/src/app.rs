@@ -851,6 +851,9 @@ impl App {
         app_server: &mut AppServerSession,
         event: TuiEvent,
     ) -> Result<AppRunControl> {
+        if matches!(event, TuiEvent::ColorsChanged) {
+            self.refresh_status_line();
+        }
         if self.reconnect.offline
             && let TuiEvent::Key(key) = &event
             && matches!(key.kind, KeyEventKind::Press | KeyEventKind::Repeat)
@@ -885,6 +888,10 @@ impl App {
             let Some(key_event) = self.route_key_chord_event(tui, key_event) else {
                 return Ok(AppRunControl::Continue);
             };
+            if self.keymap.app.refresh_colors.is_pressed(key_event) {
+                tui.refresh_colors();
+                return Ok(AppRunControl::Continue);
+            }
             TuiEvent::Key(key_event)
         } else {
             event
@@ -945,7 +952,11 @@ impl App {
                         ));
                     }
                 }
-                TuiEvent::Draw | TuiEvent::Resume | TuiEvent::Resize(_) | TuiEvent::FocusGained => {
+                TuiEvent::ColorsChanged
+                | TuiEvent::Draw
+                | TuiEvent::Resume
+                | TuiEvent::Resize(_)
+                | TuiEvent::FocusGained => {
                     if self.backtrack_render_pending {
                         self.rebuild_transcript_after_backtrack(tui, screen_size.into())?;
                         self.backtrack_render_pending = false;

@@ -27,6 +27,7 @@ use std::task::Context;
 use std::task::Poll;
 
 use crossterm::event::Event;
+use crossterm::event::EventWithColor;
 use tokio::sync::broadcast;
 use tokio::sync::watch;
 use tokio_stream::Stream;
@@ -38,7 +39,7 @@ use super::TuiEvent;
 use super::size_monitor::SizeMonitor;
 
 /// Result type produced by an event source.
-pub type EventResult = std::io::Result<Event>;
+pub type EventResult = std::io::Result<EventWithColor>;
 
 /// Abstraction over a source of terminal events. Allows swapping in a fake for tests.
 /// Value in production is [`CrosstermEventSource`].
@@ -54,6 +55,8 @@ pub struct EventBroker<S: EventSource = CrosstermEventSource> {
     state: Mutex<EventBrokerState<S>>,
     resume_events_tx: watch::Sender<()>,
     pub(super) size_monitor: Option<SizeMonitor>,
+    #[cfg(unix)]
+    colors: Mutex<super::color_refresh::ColorRefresh>,
 }
 
 /// Tracks state of underlying [`EventSource`].
@@ -87,6 +90,8 @@ impl<S: EventSource + Default> EventBroker<S> {
             state: Mutex::new(EventBrokerState::Start),
             resume_events_tx,
             size_monitor: None,
+            #[cfg(unix)]
+            colors: Mutex::default(),
         }
     }
 
@@ -100,6 +105,13 @@ impl<S: EventSource + Default> EventBroker<S> {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         *state = EventBrokerState::Paused;
+        #[cfg(unix)]
+        {
+            *self
+                .colors
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner) = Default::default();
+        }
     }
 
     /// Create a new instance of the underlying event source
@@ -112,6 +124,27 @@ impl<S: EventSource + Default> EventBroker<S> {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         *state = EventBrokerState::Start;
+        drop(state);
+        #[cfg(unix)]
+        self.refresh_colors(super::color_refresh::RefreshReason::Manual);
+        let _ = self.resume_events_tx.send(());
+    }
+
+    #[cfg(unix)]
+    pub(super) fn refresh_colors(&self, reason: super::color_refresh::RefreshReason) {
+        if matches!(
+            *self
+                .state
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner),
+            EventBrokerState::Paused
+        ) {
+            return;
+        }
+        self.colors
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .request(reason, &mut super::color_refresh::output());
         let _ = self.resume_events_tx.send(());
     }
 
@@ -125,11 +158,11 @@ impl<S: EventSource + Default> EventBroker<S> {
 }
 
 /// Real crossterm-backed event source.
-pub struct CrosstermEventSource(pub crossterm::event::EventStream);
+pub struct CrosstermEventSource(pub crossterm::event::ColorEventStream);
 
 impl Default for CrosstermEventSource {
     fn default() -> Self {
-        Self(crossterm::event::EventStream::new())
+        Self(crossterm::event::EventStream::with_color_reports())
     }
 }
 
@@ -203,6 +236,12 @@ impl<S: EventSource + Default + Unpin> TuiEventStream<S> {
         // Some crossterm events map to None (e.g. mouse); loop so we keep polling
         // until we return a mapped event, hit Pending, or see EOF/error.
         loop {
+            #[cfg(unix)]
+            self.broker
+                .colors
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .poll_timeout(cx, &mut super::color_refresh::output());
             let poll_result = {
                 let mut state = self
                     .broker
@@ -264,8 +303,29 @@ impl<S: EventSource + Default + Unpin> TuiEventStream<S> {
     }
 
     /// Map a crossterm event to a [`TuiEvent`], skipping events we don't use (mouse events, etc.).
-    fn map_crossterm_event(&mut self, event: Event) -> Option<TuiEvent> {
+    fn map_crossterm_event(&mut self, event: EventWithColor) -> Option<TuiEvent> {
+        let EventWithColor::Event(event) = event else {
+            #[cfg(unix)]
+            if let Some(colors) = self
+                .broker
+                .colors
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .report(&event, &mut super::color_refresh::output())
+                && crate::terminal_palette::update_default_colors(colors)
+            {
+                crate::render::highlight::refresh_terminal_colors();
+                return Some(TuiEvent::ColorsChanged);
+            }
+            return None;
+        };
         match event {
+            Event::ColorScheme(_) => {
+                #[cfg(unix)]
+                self.broker
+                    .refresh_colors(super::color_refresh::RefreshReason::Theme);
+                None
+            }
             Event::Key(key_event) => {
                 #[cfg(unix)]
                 if crate::tui::job_control::SUSPEND_KEY.is_press(key_event) {
@@ -293,8 +353,9 @@ impl<S: EventSource + Default + Unpin> TuiEventStream<S> {
             Event::Paste(pasted) => Some(TuiEvent::Paste(pasted)),
             Event::FocusGained => {
                 self.terminal_focused.store(true, Ordering::Relaxed);
-                // Keep the startup-cached palette: querying terminal colors here blocks the
-                // input loop, and a direct probe would discard keys typed during the refresh.
+                #[cfg(unix)]
+                self.broker
+                    .refresh_colors(super::color_refresh::RefreshReason::Focus);
                 Some(TuiEvent::FocusGained)
             }
             Event::FocusLost => {
@@ -382,7 +443,7 @@ mod tests {
             Self { broker }
         }
 
-        fn send(&self, event: EventResult) {
+        fn send(&self, event: std::io::Result<Event>) {
             let mut state = self
                 .broker
                 .state
@@ -391,7 +452,7 @@ mod tests {
             let Some(source) = state.active_event_source_mut() else {
                 return;
             };
-            let _ = source.tx.send(event);
+            let _ = source.tx.send(event.map(Into::into));
         }
     }
 
@@ -637,3 +698,7 @@ mod tests {
         }
     }
 }
+
+#[cfg(all(test, unix))]
+#[path = "event_stream_color_tests.rs"]
+mod color_tests;

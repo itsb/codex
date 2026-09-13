@@ -4048,6 +4048,7 @@
               "open_external_editor": null,
               "open_transcript": null,
               "queue": null,
+              "refresh_colors": null,
               "submit": null,
               "toggle_fast_mode": null,
               "toggle_raw_output": null,
@@ -4740,6 +4741,14 @@
           ],
           "description": "Queue the current composer draft while a task is running."
         },
+        "refresh_colors": {
+          "allOf": [
+            {
+              "$ref": "#/definitions/KeybindingsSpec"
+            }
+          ],
+          "description": "Refresh terminal foreground and background colors without changing input or dialogs."
+        },
         "submit": {
           "allOf": [
             {
@@ -4898,6 +4907,7 @@
             "open_external_editor": null,
             "open_transcript": null,
             "queue": null,
+            "refresh_colors": null,
             "submit": null,
             "toggle_fast_mode": null,
             "toggle_raw_output": null,

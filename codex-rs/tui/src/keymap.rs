@@ -97,6 +97,8 @@ pub(crate) struct AppKeymap {
     pub(crate) copy: Vec<KeyBinding>,
     /// Clear the terminal UI.
     pub(crate) clear_terminal: Vec<KeyBinding>,
+    /// Refresh the terminal palette on every input surface.
+    pub(crate) refresh_colors: Vec<KeyBinding>,
     /// Toggle Vim mode for the composer input.
     pub(crate) toggle_vim_mode: Vec<KeyBinding>,
     /// Toggle Fast mode.
@@ -652,6 +654,11 @@ impl RuntimeKeymap {
                 keymap.global.copy.as_ref(),
                 &defaults.app.copy,
                 "tui.keymap.global.copy",
+            )?,
+            refresh_colors: resolve_bindings(
+                keymap.global.refresh_colors.as_ref(),
+                &defaults.app.refresh_colors,
+                "tui.keymap.global.refresh_colors",
             )?,
             clear_terminal: resolve_bindings(
                 keymap.global.clear_terminal.as_ref(),
@@ -1324,6 +1331,10 @@ impl RuntimeKeymap {
             ),
             (keymap.global.copy.as_ref(), app.copy.as_slice()),
             (
+                keymap.global.refresh_colors.as_ref(),
+                app.refresh_colors.as_slice(),
+            ),
+            (
                 keymap.global.clear_terminal.as_ref(),
                 app.clear_terminal.as_slice(),
             ),
@@ -1526,6 +1537,7 @@ impl RuntimeKeymap {
                 open_external_editor: default_bindings![ctrl(KeyCode::Char('g'))],
                 copy: default_bindings![ctrl(KeyCode::Char('o'))],
                 clear_terminal: default_bindings![ctrl(KeyCode::Char('l'))],
+                refresh_colors: vec![],
                 toggle_vim_mode: default_bindings![],
                 toggle_fast_mode: default_bindings![],
                 toggle_raw_output: default_bindings![alt(KeyCode::Char('r'))],
@@ -1822,6 +1834,17 @@ impl RuntimeKeymap {
     /// 2. Contexts with hard-coded sequence behavior, such as edit-previous
     ///    backtracking, intentionally stay outside this configurable keymap.
     fn validate_conflicts(&self) -> Result<(), String> {
+        // Refresh is handled before every dialog and pager, so it cannot shadow any action.
+        for candidate in
+            runtime_action_bindings(self).filter(|candidate| !candidate.id.is_refresh_colors())
+        {
+            validate_no_shadow_with_allowed_overlaps(
+                "global",
+                [("refresh_colors", self.app.refresh_colors.as_slice())],
+                [(candidate.id.action, candidate.bindings)],
+                [],
+            )?;
+        }
         for (action, bindings) in [
             (
                 "previous_permission_mode",
@@ -1878,6 +1901,7 @@ impl RuntimeKeymap {
             ),
             ("copy", self.app.copy.as_slice()),
             ("clear_terminal", self.app.clear_terminal.as_slice()),
+            ("refresh_colors", self.app.refresh_colors.as_slice()),
             ("toggle_vim_mode", self.app.toggle_vim_mode.as_slice()),
             ("toggle_fast_mode", self.app.toggle_fast_mode.as_slice()),
             ("toggle_raw_output", self.app.toggle_raw_output.as_slice()),
@@ -1980,6 +2004,7 @@ impl RuntimeKeymap {
                 ),
                 ("copy", self.app.copy.as_slice()),
                 ("clear_terminal", self.app.clear_terminal.as_slice()),
+                ("refresh_colors", self.app.refresh_colors.as_slice()),
                 ("toggle_vim_mode", self.app.toggle_vim_mode.as_slice()),
                 ("toggle_fast_mode", self.app.toggle_fast_mode.as_slice()),
                 ("toggle_raw_output", self.app.toggle_raw_output.as_slice()),
@@ -2036,6 +2061,7 @@ impl RuntimeKeymap {
                 ),
                 ("copy", self.app.copy.as_slice()),
                 ("clear_terminal", self.app.clear_terminal.as_slice()),
+                ("refresh_colors", self.app.refresh_colors.as_slice()),
                 (
                     "chat.toggle_voice_mute",
                     self.chat.toggle_voice_mute.as_slice(),

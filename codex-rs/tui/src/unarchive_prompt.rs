@@ -54,6 +54,7 @@ pub(crate) async fn run_unarchive_prompt(
                 }
             }
             TuiEvent::Paste(_)
+            | TuiEvent::ColorsChanged
             | TuiEvent::Draw
             | TuiEvent::Resize(_)
             | TuiEvent::Resume
