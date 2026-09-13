@@ -22,8 +22,10 @@ impl Tui {
     pub(crate) fn screen_size_for_event(&mut self, event: &TuiEvent) -> io::Result<Size> {
         if matches!(event, TuiEvent::Resize(_)) {
             self.schedule_screen_size_recheck(TRANSCRIPT_REFLOW_DEBOUNCE);
-        } else if matches!(event, TuiEvent::Draw | TuiEvent::FocusGained)
-            && let Some(deadline) = self.screen_size.pending_recheck_at
+        } else if matches!(
+            event,
+            TuiEvent::ColorsChanged | TuiEvent::Draw | TuiEvent::FocusGained
+        ) && let Some(deadline) = self.screen_size.pending_recheck_at
         {
             let now = Instant::now();
             if now < deadline {
@@ -33,6 +35,9 @@ impl Tui {
             }
         }
 
+        if matches!(event, TuiEvent::ColorsChanged) {
+            self.terminal.invalidate_viewport();
+        }
         let cached = self.terminal.last_known_screen_size;
         let size = match event {
             TuiEvent::Resize(size) => {
@@ -44,7 +49,7 @@ impl Tui {
                 self.screen_size.deferred_size = None;
                 self.terminal.size()?
             }
-            TuiEvent::Draw | TuiEvent::FocusGained => {
+            TuiEvent::ColorsChanged | TuiEvent::Draw | TuiEvent::FocusGained => {
                 self.screen_size.deferred_size.take().unwrap_or(cached)
             }
             TuiEvent::Key(_) | TuiEvent::Mouse(_) | TuiEvent::Paste(_) | TuiEvent::FocusLost => {

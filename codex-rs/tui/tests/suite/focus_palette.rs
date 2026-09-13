@@ -28,7 +28,7 @@ mod external_editor;
 mod tui_mode_picker;
 
 #[test]
-fn focus_gained_with_unanswered_palette_queries_preserves_immediate_input() -> Result<()> {
+fn focus_gained_with_palette_refresh_preserves_immediate_input() -> Result<()> {
     let repo_root = codex_utils_cargo_bin::repo_root()?;
     let codex_home = tempfile::tempdir()?;
     write_test_config(codex_home.path(), &repo_root)?;
@@ -39,7 +39,10 @@ fn focus_gained_with_unanswered_palette_queries_preserves_immediate_input() -> R
     let startup_output_len = terminal.output.len();
     let focus_started = Instant::now();
     terminal.write_input(format!("\u{1b}[I{FOCUS_PROBE_INPUT}").as_bytes())?;
-    terminal.wait_for_focus_input(FOCUS_PROBE_INPUT, focus_started, startup_output_len)?;
+    ensure!(
+        terminal.wait_for_focus_input(FOCUS_PROBE_INPUT, focus_started, startup_output_len)?,
+        "focus regain did not request a terminal color refresh"
+    );
 
     let delayed_input = format!("{FOCUS_PROBE_INPUT}-delayed");
     let delayed_focus_started = Instant::now();
@@ -416,17 +419,22 @@ impl PtyCodex {
         input: &str,
         focus_started: Instant,
         startup_output_len: usize,
-    ) -> Result<()> {
+    ) -> Result<bool> {
+        let mut answered_refresh = false;
         while focus_started.elapsed() < FOCUS_INPUT_TIMEOUT {
             self.read_output(Duration::from_millis(/*millis*/ 20))?;
             let focus_output = &self.output[startup_output_len..];
-            ensure!(
-                !contains_bytes(focus_output, b"\x1b]10;?")
-                    && !contains_bytes(focus_output, b"\x1b]11;?"),
-                "focus regain queried terminal colors after the startup palette was cached",
-            );
+            if !answered_refresh
+                && contains_bytes(focus_output, b"\x1b]10;?")
+                && contains_bytes(focus_output, b"\x1b]11;?")
+            {
+                self.write_input(
+                    b"\x1b]10;rgb:ffff/ffff/ffff\x1b\\\x1b]11;rgb:0000/0000/0000\x1b\\",
+                )?;
+                answered_refresh = true;
+            }
             if self.screen_contains(input) {
-                return Ok(());
+                return Ok(answered_refresh);
             }
         }
 

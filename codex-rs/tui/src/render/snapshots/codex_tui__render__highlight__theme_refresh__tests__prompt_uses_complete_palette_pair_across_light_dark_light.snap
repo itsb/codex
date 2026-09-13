@@ -1,0 +1,9 @@
+---
+source: tui/src/render/highlight_theme_refresh_tests.rs
+expression: styles
+---
+[
+    Style::new().fg(Color::Rgb(30, 30, 30)).bg(Color::Rgb(240, 240, 240)),
+    Style::new().fg(Color::Rgb(230, 230, 230)).bg(Color::Rgb(48, 48, 48)),
+    Style::new().fg(Color::Rgb(30, 30, 30)).bg(Color::Rgb(240, 240, 240)),
+]

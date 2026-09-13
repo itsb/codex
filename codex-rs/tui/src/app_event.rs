@@ -1536,6 +1536,8 @@ pub(crate) enum AppEvent {
 
     /// Runtime syntax theme preview changed; refresh theme-derived UI colors.
     SyntaxThemePreviewed,
+    /// Query the terminal palette asynchronously without touching the current input surface.
+    RefreshColors,
 
     /// Open set/remove actions for the selected keymap action.
     OpenKeymapActionMenu {

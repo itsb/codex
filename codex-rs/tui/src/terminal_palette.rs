@@ -88,10 +88,10 @@ fn best_color_for_color_level(target: (u8, u8, u8), color_level: StdoutColorLeve
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct DefaultColors {
-    fg: (u8, u8, u8),
-    bg: (u8, u8, u8),
+    pub(crate) fg: (u8, u8, u8),
+    pub(crate) bg: (u8, u8, u8),
 }
 
 #[cfg(test)]
@@ -142,72 +142,46 @@ pub(crate) fn set_default_colors_from_startup_probe(
     imp::set_default_colors_from_startup_probe(colors);
 }
 
+/// Commit both colors together; incomplete and unchanged replies never invalidate rendering.
+#[cfg(unix)]
+pub(crate) fn update_default_colors(colors: crate::terminal_probe::DefaultColors) -> bool {
+    let next = DefaultColors {
+        fg: colors.fg,
+        bg: colors.bg,
+    };
+    if default_colors() == Some(next) {
+        return false;
+    }
+    #[cfg(test)]
+    TEST_DEFAULT_COLORS.with(|colors| colors.set(Some(next)));
+    #[cfg(not(test))]
+    imp::set_default_colors_from_startup_probe(Some(colors));
+    true
+}
+
 #[cfg(all(unix, not(test)))]
 mod imp {
     use super::DefaultColors;
     use std::sync::Mutex;
-    use std::sync::OnceLock;
 
-    struct Cache<T> {
-        attempted: bool,
-        value: Option<T>,
-    }
-
-    impl<T> Default for Cache<T> {
-        fn default() -> Self {
-            Self {
-                attempted: false,
-                value: None,
-            }
-        }
-    }
-
-    impl<T: Copy> Cache<T> {
-        fn get_or_init_with(&mut self, mut init: impl FnMut() -> Option<T>) -> Option<T> {
-            if !self.attempted {
-                self.value = init();
-                self.attempted = true;
-            }
-            self.value
-        }
-    }
-
-    fn default_colors_cache() -> &'static Mutex<Cache<DefaultColors>> {
-        static CACHE: OnceLock<Mutex<Cache<DefaultColors>>> = OnceLock::new();
-        CACHE.get_or_init(|| Mutex::new(Cache::default()))
-    }
+    static COLORS: Mutex<Option<DefaultColors>> = Mutex::new(None);
 
     pub(super) fn default_colors() -> Option<DefaultColors> {
-        let cache = default_colors_cache();
-        let mut cache = cache.lock().ok()?;
-        cache.get_or_init_with(query_default_colors)
+        *COLORS
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
     }
 
     pub(super) fn set_default_colors_from_startup_probe(
         colors: Option<crate::terminal_probe::DefaultColors>,
     ) {
-        if let Ok(mut cache) = default_colors_cache().lock() {
-            cache.value = colors.map(|colors| DefaultColors {
+        *COLORS
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) =
+            colors.map(|colors| DefaultColors {
                 fg: colors.fg,
                 bg: colors.bg,
             });
-            cache.attempted = true;
-        }
-    }
-
-    /// Queries terminal default colors through the bounded startup probe path.
-    ///
-    /// The palette cache treats `None` as an attempted-but-unavailable result, so this function
-    /// collapses I/O errors and missing responses into the same fallback path used for terminals
-    /// that simply do not support OSC 10/11 queries.
-    fn query_default_colors() -> Option<DefaultColors> {
-        crate::terminal_probe::default_colors(crate::terminal_probe::DEFAULT_TIMEOUT)
-            .ok()
-            .flatten()
-            .map(|colors| DefaultColors {
-                fg: colors.fg,
-                bg: colors.bg,
-            })
     }
 }
 

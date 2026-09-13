@@ -547,6 +547,7 @@ impl ChatWidget {
             SlashCommand::Statusline => {
                 self.open_status_line_setup();
             }
+            SlashCommand::RefreshColors => self.app_event_tx.send(AppEvent::RefreshColors),
             SlashCommand::Theme => {
                 self.open_theme_picker();
             }
@@ -1276,6 +1277,7 @@ impl ChatWidget {
             | SlashCommand::Hooks
             | SlashCommand::Title
             | SlashCommand::Statusline
+            | SlashCommand::RefreshColors
             | SlashCommand::Theme
             | SlashCommand::Tui
             | SlashCommand::Pets => QueueDrain::Stop,

@@ -523,6 +523,7 @@ fn parent_owned_command_is_allowed(command: SlashCommand, args: &str) -> bool {
                 | SlashCommand::DebugConfig
                 | SlashCommand::Title
                 | SlashCommand::Statusline
+                | SlashCommand::RefreshColors
                 | SlashCommand::Theme
                 | SlashCommand::Pets
                 | SlashCommand::Ps
