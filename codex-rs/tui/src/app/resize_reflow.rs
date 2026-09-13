@@ -573,6 +573,24 @@ impl App {
         Ok(terminal_width)
     }
 
+    /// Repaint committed inline history after terminal palette changes.
+    ///
+    /// Finalized cells live in terminal scrollback rather than the active Ratatui viewport, so a
+    /// viewport redraw alone cannot update their stored foreground/background attributes.
+    pub(super) fn refresh_scrollback_colors(
+        &mut self,
+        tui: &mut tui::Tui,
+        screen_size: ratatui::layout::Size,
+    ) -> Result<()> {
+        if self.overlay.is_some() {
+            return Ok(());
+        }
+
+        let width = self.reflow_transcript_now(tui, screen_size.into())?;
+        self.transcript_reflow.mark_reflowed_width(width.0);
+        Ok(())
+    }
+
     /// Return whether older paginated source can fill unused configured scrollback rows.
     pub(super) fn scrollback_history_needs_top_up(&self, rendered_rows: usize) -> bool {
         self.overlay.is_none()
