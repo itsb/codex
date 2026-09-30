@@ -45,7 +45,11 @@ impl StartupDraftPump {
                     false
                 }
                 TuiEvent::Paste(text) => !text.is_empty(),
-                TuiEvent::Draw | TuiEvent::Resize(_) | TuiEvent::Resume | TuiEvent::FocusGained => {
+                TuiEvent::Draw
+                | TuiEvent::Resize(_)
+                | TuiEvent::Resume
+                | TuiEvent::FocusGained
+                | TuiEvent::ColorsChanged => {
                     self.pending_paste_newline = Some((started_at, newlines));
                     if self.initial_screen == StartupDraftInitialScreen::Composer {
                         self.draw(tui, screen_size)?;
@@ -158,7 +162,11 @@ impl StartupDraftPump {
                     self.bottom_pane.handle_paste(text);
                 }
             }
-            TuiEvent::Draw | TuiEvent::Resize(_) | TuiEvent::Resume | TuiEvent::FocusGained => {}
+            TuiEvent::Draw
+            | TuiEvent::Resize(_)
+            | TuiEvent::Resume
+            | TuiEvent::FocusGained
+            | TuiEvent::ColorsChanged => {}
             TuiEvent::FocusLost => {
                 self.key_chord_matcher.cancel();
                 self.blossom.borrow_mut().cancel_replay();

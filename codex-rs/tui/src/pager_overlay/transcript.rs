@@ -212,7 +212,11 @@ impl TranscriptOverlay {
                 }
                 self.view.paste_search(&text).then_some(ViewAction::Changed)
             }
-            TuiEvent::Draw | TuiEvent::Resize(_) | TuiEvent::FocusGained | TuiEvent::Resume => {
+            TuiEvent::Draw
+            | TuiEvent::Resize(_)
+            | TuiEvent::FocusGained
+            | TuiEvent::Resume
+            | TuiEvent::ColorsChanged => {
                 if matches!(event, TuiEvent::Draw) && self.view.tick_selection(&self.cells) {
                     tui.frame_requester()
                         .schedule_frame_in(crate::tui::TARGET_FRAME_INTERVAL);

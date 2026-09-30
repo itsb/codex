@@ -84,7 +84,10 @@ impl App {
     /// Invalidate before polling, even when the worker has already completed.
     pub(super) fn invalidate_right_click_paste(&mut self, event: &TuiEvent) {
         let keep = match event {
-            TuiEvent::Draw | TuiEvent::Resize(_) | TuiEvent::FocusGained => true,
+            TuiEvent::Draw
+            | TuiEvent::Resize(_)
+            | TuiEvent::FocusGained
+            | TuiEvent::ColorsChanged => true,
             TuiEvent::Mouse(mouse) => {
                 matches!(
                     mouse.kind,
