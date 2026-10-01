@@ -56,3 +56,13 @@ fn startup_replay_omits_terminal_color_replies_interleaved_with_bracketed_paste(
         response_after_paste
     );
 }
+
+#[test]
+fn startup_replay_omits_device_and_keyboard_probe_replies() {
+    let input = b"typed\x1b[?1;10;0c\x1b[>1;95;0c\x1b[?7u\x1b[200~paste\x1b[201~suffix";
+
+    assert_eq!(
+        startup_replay_input(input),
+        b"typed\x1b[200~paste\x1b[201~suffix"
+    );
+}
