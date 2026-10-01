@@ -200,6 +200,7 @@ jobs:
           package/bin/codex-code-mode-host --help > /dev/null
 
       - name: Release validated platform independently
+        if: ${{ github.event_name == 'push' }}
         uses: softprops/action-gh-release@v2
         with:
           tag_name: itsb-v${{ steps.version.outputs.value }}-${{ matrix.npm_tag }}
@@ -278,6 +279,7 @@ jobs:
           done
 
       - name: Create GitHub Release
+        if: ${{ github.event_name == 'push' }}
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.version.outputs.tag }}
