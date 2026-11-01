@@ -1149,6 +1149,7 @@ pub async fn run_main(
     explicit_remote_endpoint: Option<RemoteAppServerEndpoint>,
 ) -> std::io::Result<AppExitInfo> {
     system_motion::initialize().await;
+    markdown_render::probe_tmux_hyperlinks().await;
     startup_recovery::scope(async move {
         // Startup retains a large future for the whole session. Keep it off callers' stacks,
         // which also need room to construct a replacement chat widget on `/new`.

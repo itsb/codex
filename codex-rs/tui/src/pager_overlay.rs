@@ -473,7 +473,11 @@ impl StaticOverlay {
                 }
                 other => self.view.handle_key_event(tui, other),
             },
-            TuiEvent::Draw | TuiEvent::Resume | TuiEvent::Resize(_) | TuiEvent::FocusGained => {
+            TuiEvent::Draw
+            | TuiEvent::Resume
+            | TuiEvent::Resize(_)
+            | TuiEvent::FocusGained
+            | TuiEvent::ColorsChanged => {
                 tui.draw(u16::MAX, |frame| {
                     self.render(frame.area(), frame.buffer);
                 })?;

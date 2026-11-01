@@ -103,6 +103,7 @@ mod list_spacing_tests;
 #[path = "markdown_render/task_list_tests.rs"]
 mod task_list_tests;
 pub(crate) use web_links::hide_web_link_destination;
+pub(crate) use web_links::probe_tmux_hyperlinks;
 use web_links::style_bare_web_urls;
 
 const TABLE_COLUMN_GAP: usize = 2;

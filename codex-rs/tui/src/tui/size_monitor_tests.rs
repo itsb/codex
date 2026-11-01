@@ -40,7 +40,8 @@ impl EventSource for KeySource {
         Poll::Ready(Some(Ok(Event::Key(KeyEvent::new(
             KeyCode::Char('x'),
             KeyModifiers::NONE,
-        )))))
+        ))
+        .into())))
     }
 }
 

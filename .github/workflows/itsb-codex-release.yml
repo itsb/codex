@@ -1,0 +1,323 @@
+name: itsb-codex-release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Semver version to release (for example 0.166.0-tmux.1)"
+        required: true
+        type: string
+      publish_npm:
+        description: "Publish @itsbfb/codex and platform packages to npm"
+        required: true
+        default: false
+        type: boolean
+  push:
+    tags:
+      - "itsb-v*.*.*"
+
+permissions:
+  contents: write
+  id-token: write
+
+env:
+  CODEX_REPO_ROOT: ${{ github.workspace }}
+  CARGO_NET_GIT_FETCH_WITH_CLI: "true"
+
+jobs:
+  build:
+    name: Build ${{ matrix.target }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-14
+            target: aarch64-apple-darwin
+            os: darwin
+            cpu: arm64
+            npm_tag: darwin-arm64
+          - runner: ubuntu-24.04
+            target: x86_64-unknown-linux-musl
+            os: linux
+            cpu: x64
+            npm_tag: linux-x64
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+
+      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0, matching codex-rs/rust-toolchain.toml
+        with:
+          targets: ${{ matrix.target }}
+
+      # Keep this explicit: the package builder invokes Cargo itself, and the
+      # target component can be absent even when the toolchain action accepted
+      # the `targets` input (notably on fresh hosted runners).
+      - name: Verify Rust target
+        if: runner.os == 'Linux'
+        working-directory: codex-rs
+        env:
+          TARGET: ${{ matrix.target }}
+        run: |
+          rustup target add "$TARGET"
+          rustup target list --installed
+
+      - name: Install Linux build dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y \
+            binutils pkg-config libcap-dev
+
+      - name: Install Zig
+        if: runner.os == 'Linux'
+        uses: mlugg/setup-zig@v2
+        with:
+          version: 0.14.0
+          use-cache: true
+
+      - name: Install musl build tools
+        if: runner.os == 'Linux'
+        env:
+          TARGET: ${{ matrix.target }}
+        run: bash .github/scripts/install-musl-build-tools.sh
+
+      - name: Disable aws-lc jitter entropy (musl)
+        if: runner.os == 'Linux'
+        run: echo "AWS_LC_SYS_NO_JITTER_ENTROPY=1" >> "$GITHUB_ENV"
+
+      - name: Configure rusty_v8 artifacts
+        uses: ./.github/actions/setup-rusty-v8
+        with:
+          target: ${{ matrix.target }}
+
+      - name: Determine version
+        id: version
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+        shell: bash
+        run: |
+          if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
+            version="${GITHUB_REF_NAME#itsb-v}"
+          else
+            version="$INPUT_VERSION"
+          fi
+          [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+([-.+][0-9A-Za-z.-]+)?$ ]]
+          echo "value=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Build canonical Codex package
+        env:
+          VERSION: ${{ steps.version.outputs.value }}
+          TARGET: ${{ matrix.target }}
+        run: |
+          python3 - "$VERSION" <<'PY'
+          from pathlib import Path
+          import re
+          import sys
+
+          version = sys.argv[1]
+          path = Path("codex-rs/Cargo.toml")
+          text = path.read_text()
+          pattern = r'(\[workspace\.package\]\s+version\s*=\s*")[^"]+("\s*)'
+          updated, count = re.subn(pattern, rf'\g<1>{version}\g<2>', text, count=1)
+          if count != 1:
+              raise SystemExit("could not stamp workspace package version")
+          path.write_text(updated)
+          PY
+          mkdir -p dist package
+          python3 scripts/build_codex_package.py \
+            --target "$TARGET" \
+            --package-version "$VERSION" \
+            --cargo-profile release \
+            --package-dir package \
+            --force
+          tar -czf "dist/codex-package-$TARGET.tar.gz" -C package .
+
+      - name: Build self-contained platform npm package
+        env:
+          VERSION: ${{ steps.version.outputs.value }}
+          TARGET: ${{ matrix.target }}
+          OS_NAME: ${{ matrix.os }}
+          CPU: ${{ matrix.cpu }}
+          NPM_TAG: ${{ matrix.npm_tag }}
+        shell: bash
+        run: |
+          stage="npm-stage"
+          mkdir -p "$stage/bin" "$stage/vendor/$TARGET"
+          # The launcher is generated from the upstream launcher with the fork's
+          # package scope, while retaining its local vendor fallback.
+          sed 's/@openai/@itsbfb/g' \
+            codex-cli/bin/codex.js > "$stage/bin/codex.js"
+          cp -R package/. "$stage/vendor/$TARGET/"
+          cp README.md "$stage/README.md"
+          node -e '
+            const fs = require("fs");
+            const p = {
+              name: `@itsbfb/codex-${process.env.NPM_TAG}`,
+              version: `${process.env.VERSION}-${process.env.NPM_TAG}`,
+              description: "Codex CLI (native platform package)",
+              repository: { type: "git", url: "git+https://github.com/itsb/codex.git" },
+              license: "Apache-2.0",
+              type: "module",
+              bin: { codex: "bin/codex.js" },
+              files: ["bin", "vendor"],
+              os: [process.env.OS_NAME],
+              cpu: [process.env.CPU]
+            };
+            fs.writeFileSync("npm-stage/package.json", JSON.stringify(p, null, 2) + "\n");
+          '
+          npm pack ./"$stage" --pack-destination dist
+          mv dist/itsbfb-codex-${NPM_TAG}-*.tgz "dist/itsb-codex-${NPM_TAG}.tgz"
+          # npm wraps tarballs in base64 for upload. Keep well below its
+          # 300 MiB request-body limit, with room for metadata and encoding.
+          python3 -c 'import pathlib, sys; p = pathlib.Path(sys.argv[1]); assert p.stat().st_size < 200 * 1024 * 1024, f"npm tarball too large: {p}"' "dist/itsb-codex-${NPM_TAG}.tgz"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: itsb-${{ matrix.npm_tag }}
+          path: |
+            dist/codex-package-${{ matrix.target }}.tar.gz
+            dist/itsb-codex-${{ matrix.npm_tag }}.tgz
+
+      - name: Smoke test packaged npm installation
+        env:
+          VERSION: ${{ steps.version.outputs.value }}
+          TARGET: ${{ matrix.target }}
+        shell: bash
+        run: |
+          npm install --prefix "$RUNNER_TEMP/codex-smoke" --no-audit --no-fund \
+            "./dist/itsb-codex-${{ matrix.npm_tag }}.tgz"
+          test "$("$RUNNER_TEMP/codex-smoke/node_modules/.bin/codex" --version)" = "codex-cli $VERSION"
+          "$RUNNER_TEMP/codex-smoke/node_modules/.bin/codex" --help > /dev/null
+          package/bin/codex-code-mode-host --help > /dev/null
+          package/bin/codex-exec-server --help > /dev/null
+          package/codex-path/rg --version > /dev/null
+          if [[ "$TARGET" == *apple-darwin ]]; then
+            codesign --verify package/bin/codex
+            codesign --verify package/bin/codex-code-mode-host
+            codesign --verify package/bin/codex-exec-server
+          else
+            package/codex-resources/bwrap --version > /dev/null
+          fi
+
+      - name: Release validated platform independently
+        if: ${{ github.event_name == 'push' }}
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: itsb-v${{ steps.version.outputs.value }}-${{ matrix.npm_tag }}
+          target_commitish: ${{ github.sha }}
+          name: Codex ${{ steps.version.outputs.value }} (${{ matrix.npm_tag }})
+          prerelease: true
+          files: dist/*
+
+  release:
+    needs: build
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          # Uploaded paths already include the dist/ prefix. Download into the
+          # workspace so release assets land at dist/<name>, not dist/dist/<name>.
+          path: .
+          pattern: itsb-*
+          merge-multiple: true
+
+      - name: Determine version and tag
+        id: version
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+        shell: bash
+        run: |
+          if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
+            version="${GITHUB_REF_NAME#itsb-v}"
+            tag="$GITHUB_REF_NAME"
+          else
+            version="$INPUT_VERSION"
+            tag="itsb-v$version"
+          fi
+          echo "value=$version" >> "$GITHUB_OUTPUT"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+
+      - name: Assemble @itsbfb/codex launcher package
+        env:
+          VERSION: ${{ steps.version.outputs.value }}
+        run: |
+          mkdir -p dist
+          # download-artifact may flatten uploaded paths; normalize all release
+          # assets into dist before assembling and uploading the root package.
+          find . -type f \( -name 'itsb-codex-*.tgz' -o -name 'codex-package-*.tar.gz' \) \
+            ! -path './dist/*' -exec mv {} dist/ \;
+          mkdir -p root/bin
+          sed 's/@openai/@itsbfb/g' \
+            codex-cli/bin/codex.js > root/bin/codex.js
+          cp README.md root/README.md
+          node -e '
+            const fs = require("fs");
+            const p = {
+              name: "@itsbfb/codex",
+              version: process.env.VERSION,
+              description: "Codex CLI",
+              repository: { type: "git", url: "git+https://github.com/itsb/codex.git" },
+              license: "Apache-2.0",
+              type: "module",
+              bin: { codex: "bin/codex.js" },
+              files: ["bin"],
+              optionalDependencies: {
+                [`@itsbfb/codex-darwin-arm64`]: `${process.env.VERSION}-darwin-arm64`,
+                [`@itsbfb/codex-linux-x64`]: `${process.env.VERSION}-linux-x64`
+              }
+            };
+            fs.writeFileSync("root/package.json", JSON.stringify(p, null, 2) + "\n");
+          '
+          root_tarball="$(npm pack ./root --pack-destination dist | tail -n 1)"
+          test -n "$root_tarball" && test -f "dist/$root_tarball"
+          mv "dist/$root_tarball" "dist/itsb-codex-${VERSION}.tgz"
+          for asset in itsb-codex-darwin-arm64.tgz itsb-codex-linux-x64.tgz; do
+            source="$(find . -type f -name "$asset" ! -path "./dist/$asset" -print -quit)"
+            if [[ -n "$source" ]]; then cp "$source" "dist/$asset"; fi
+            test -f "dist/$asset"
+          done
+
+      - name: Create GitHub Release
+        if: ${{ github.event_name == 'push' }}
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.tag }}
+          name: ${{ steps.version.outputs.value }}
+          generate_release_notes: true
+          files: dist/*
+
+      - name: Configure npm
+        if: ${{ github.event_name == 'push' || inputs.publish_npm == true }}
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          registry-url: https://registry.npmjs.org
+
+      - name: Publish packages to npm
+        if: ${{ github.event_name == 'push' || inputs.publish_npm == true }}
+        env:
+          VERSION: ${{ steps.version.outputs.value }}
+        run: |
+          test -f "dist/itsb-codex-darwin-arm64.tgz"
+          test -f "dist/itsb-codex-linux-x64.tgz"
+          test -f "dist/itsb-codex-${VERSION}.tgz"
+          publish_if_missing() {
+            package_name="$1"
+            package_version="$2"
+            tarball="$3"
+            if npm view "$package_name@$package_version" version >/dev/null 2>&1; then
+              echo "$package_name@$package_version already published; skipping"
+            else
+              npm publish "./$tarball" --access public --tag latest
+            fi
+          }
+          publish_if_missing "@itsbfb/codex-darwin-arm64" "$VERSION-darwin-arm64" "dist/itsb-codex-darwin-arm64.tgz"
+          publish_if_missing "@itsbfb/codex-linux-x64" "$VERSION-linux-x64" "dist/itsb-codex-linux-x64.tgz"
+          publish_if_missing "@itsbfb/codex" "$VERSION" "dist/itsb-codex-${VERSION}.tgz"

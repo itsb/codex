@@ -524,7 +524,11 @@ impl AnalyticsView {
                 self.handle_mouse(mouse);
                 tui.frame_requester().schedule_frame();
             }
-            TuiEvent::Draw | TuiEvent::Resume | TuiEvent::Resize(_) | TuiEvent::FocusGained => {
+            TuiEvent::Draw
+            | TuiEvent::Resume
+            | TuiEvent::Resize(_)
+            | TuiEvent::FocusGained
+            | TuiEvent::ColorsChanged => {
                 // Rendering follows a selection on resize only when it was visible before
                 // reflow. Preserve an intentional reading position away from that selection.
                 tui.draw(u16::MAX, |frame| self.render(frame.area(), frame.buffer))?;

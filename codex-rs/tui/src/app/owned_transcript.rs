@@ -694,7 +694,8 @@ impl App {
             | TuiEvent::Resume
             | TuiEvent::Resize(_)
             | TuiEvent::FocusGained
-            | TuiEvent::FocusLost => None,
+            | TuiEvent::FocusLost
+            | TuiEvent::ColorsChanged => None,
         };
         let Some(action) = action else {
             if empty_enter_returns_to_latest {

@@ -113,6 +113,7 @@ impl RenderedSelection {
             TuiEvent::Key(_)
             | TuiEvent::Paste(_)
             | TuiEvent::Resize(_)
+            | TuiEvent::ColorsChanged
             | TuiEvent::FocusLost
             | TuiEvent::Resume => {}
             TuiEvent::Draw | TuiEvent::FocusGained => return None,

@@ -1,6 +1,27 @@
 //! Preserve startup terminal input while filtering completed terminal-color replies.
 
 const MAX_REPLAYED_OSC_BYTES: usize = 1024;
+const MAX_REPLAYED_CSI_BYTES: usize = 64;
+
+fn startup_probe_csi_len(input: &[u8]) -> Option<usize> {
+    if !input.starts_with(b"\x1b[") {
+        return None;
+    }
+    let limit = input.len().min(MAX_REPLAYED_CSI_BYTES + 2);
+    let body = &input[2..limit];
+    let final_index = body.iter().position(|byte| matches!(*byte, b'c' | b'u'))?;
+    let payload = &body[..final_index];
+    if payload.len() < 2 || !matches!(payload[0], b'?' | b'>') {
+        return None;
+    }
+    if !payload[1..]
+        .iter()
+        .all(|byte| byte.is_ascii_digit() || *byte == b';')
+    {
+        return None;
+    }
+    Some(2 + final_index + 1)
+}
 
 /// Preserve input and bracketed paste while omitting completed terminal-color replies.
 ///
@@ -42,6 +63,11 @@ pub(super) fn startup_replay_input(input: &[u8]) -> Vec<u8> {
             replay.extend_from_slice(PASTE_START);
             cursor += PASTE_START.len();
             inside_paste = true;
+            continue;
+        }
+
+        if let Some(length) = startup_probe_csi_len(&input[cursor..]) {
+            cursor += length;
             continue;
         }
 

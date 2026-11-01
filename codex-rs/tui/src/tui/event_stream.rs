@@ -27,6 +27,7 @@ use std::task::Context;
 use std::task::Poll;
 
 use crossterm::event::Event;
+use crossterm::event::EventWithColor;
 use tokio::sync::broadcast;
 use tokio::sync::watch;
 use tokio_stream::Stream;
@@ -38,7 +39,7 @@ use super::TuiEvent;
 use super::size_monitor::SizeMonitor;
 
 /// Result type produced by an event source.
-pub type EventResult = std::io::Result<Event>;
+pub type EventResult = std::io::Result<EventWithColor>;
 
 /// Abstraction over a source of terminal events. Allows swapping in a fake for tests.
 /// Value in production is [`CrosstermEventSource`].
@@ -54,6 +55,8 @@ pub struct EventBroker<S: EventSource = CrosstermEventSource> {
     state: Mutex<EventBrokerState<S>>,
     resume_events_tx: watch::Sender<()>,
     pub(super) size_monitor: Option<SizeMonitor>,
+    #[cfg(unix)]
+    colors: Mutex<super::color_refresh::ColorRefresh>,
 }
 
 /// Tracks state of underlying [`EventSource`].
@@ -87,6 +90,8 @@ impl<S: EventSource + Default> EventBroker<S> {
             state: Mutex::new(EventBrokerState::Start),
             resume_events_tx,
             size_monitor: None,
+            #[cfg(unix)]
+            colors: Mutex::default(),
         }
     }
 
@@ -100,6 +105,13 @@ impl<S: EventSource + Default> EventBroker<S> {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         *state = EventBrokerState::Paused;
+        #[cfg(unix)]
+        {
+            *self
+                .colors
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner) = Default::default();
+        }
     }
 
     /// Create a new instance of the underlying event source
@@ -112,6 +124,27 @@ impl<S: EventSource + Default> EventBroker<S> {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         *state = EventBrokerState::Start;
+        drop(state);
+        #[cfg(unix)]
+        self.refresh_colors(super::color_refresh::RefreshReason::Manual);
+        let _ = self.resume_events_tx.send(());
+    }
+
+    #[cfg(unix)]
+    pub(super) fn refresh_colors(&self, reason: super::color_refresh::RefreshReason) {
+        if matches!(
+            *self
+                .state
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner),
+            EventBrokerState::Paused
+        ) {
+            return;
+        }
+        self.colors
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .request(reason, &mut super::color_refresh::output());
         let _ = self.resume_events_tx.send(());
     }
 
@@ -127,13 +160,16 @@ impl<S: EventSource + Default> EventBroker<S> {
 /// Real crossterm-backed event source.
 pub struct CrosstermEventSource {
     #[cfg(not(windows))]
-    events: crossterm::event::EventStream,
+    events: crossterm::event::ColorEventStream,
     #[cfg(windows)]
     events: super::windows_key_sequence::WindowsKeySequence<crossterm::event::EventStream>,
 }
 
 impl Default for CrosstermEventSource {
     fn default() -> Self {
+        #[cfg(not(windows))]
+        let events = crossterm::event::EventStream::with_color_reports();
+        #[cfg(windows)]
         let events = crossterm::event::EventStream::new();
         Self {
             #[cfg(not(windows))]
@@ -160,6 +196,8 @@ impl EventSource for CrosstermEventSource {
             let _ = super::windows_console::ensure_input_record_mode();
         }
 
+        #[cfg(windows)]
+        let result = result.map(|event| event.map(|event| event.map(EventWithColor::Event)));
         result
     }
 }
@@ -214,6 +252,12 @@ impl<S: EventSource + Default + Unpin> TuiEventStream<S> {
         // Some crossterm events map to None (e.g. mouse); loop so we keep polling
         // until we return a mapped event, hit Pending, or see EOF/error.
         loop {
+            #[cfg(unix)]
+            self.broker
+                .colors
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .poll_timeout(cx, &mut super::color_refresh::output());
             let poll_result = {
                 let mut state = self
                     .broker
@@ -275,8 +319,29 @@ impl<S: EventSource + Default + Unpin> TuiEventStream<S> {
     }
 
     /// Map a crossterm event to a [`TuiEvent`], preserving mouse coordinates and modifiers.
-    fn map_crossterm_event(&mut self, event: Event) -> Option<TuiEvent> {
+    fn map_crossterm_event(&mut self, event: EventWithColor) -> Option<TuiEvent> {
+        let EventWithColor::Event(event) = event else {
+            #[cfg(unix)]
+            if let Some(colors) = self
+                .broker
+                .colors
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .report(&event, &mut super::color_refresh::output())
+                && crate::terminal_palette::update_default_colors(colors)
+            {
+                crate::render::highlight::refresh_terminal_colors();
+                return Some(TuiEvent::ColorsChanged);
+            }
+            return None;
+        };
         match event {
+            Event::ColorScheme(_) => {
+                #[cfg(unix)]
+                self.broker
+                    .refresh_colors(super::color_refresh::RefreshReason::Theme);
+                None
+            }
             Event::Key(key_event) => {
                 #[cfg(unix)]
                 if crate::tui::job_control::SUSPEND_KEY.is_press(key_event) {
@@ -304,6 +369,9 @@ impl<S: EventSource + Default + Unpin> TuiEventStream<S> {
             Event::Paste(pasted) => Some(TuiEvent::Paste(pasted)),
             Event::FocusGained => {
                 self.terminal_focused.store(true, Ordering::Relaxed);
+                #[cfg(unix)]
+                self.broker
+                    .refresh_colors(super::color_refresh::RefreshReason::Focus);
                 // Keep the startup-cached palette: querying terminal colors here blocks the
                 // input loop, and a direct probe would discard keys typed during the refresh.
                 Some(TuiEvent::FocusGained)
@@ -457,13 +525,13 @@ mod tests {
             row: 42,
             modifiers: KeyModifiers::SHIFT,
         };
-        handle.send(Ok(Event::Mouse(expected)));
+        handle.send(Ok(EventWithColor::Event(Event::Mouse(expected))));
         match stream.next().await {
             Some(TuiEvent::Mouse(actual)) => assert_eq!(actual, expected),
             other => panic!("expected mouse event, got {other:?}"),
         }
         let expected = KeyEvent::new(KeyCode::Char('a'), KeyModifiers::NONE);
-        handle.send(Ok(Event::Key(expected)));
+        handle.send(Ok(EventWithColor::Event(Event::Key(expected))));
         match stream.next().await {
             Some(TuiEvent::Key(actual)) => assert_eq!(actual, expected),
             other => panic!("expected key event, got {other:?}"),
@@ -475,7 +543,7 @@ mod tests {
         let (broker, handle, _draw_tx, draw_rx, terminal_focused) = setup();
         let mut stream = make_stream(broker, draw_rx, terminal_focused.clone());
 
-        handle.send(Ok(Event::FocusLost));
+        handle.send(Ok(EventWithColor::Event(Event::FocusLost)));
 
         assert!(matches!(stream.next().await, Some(TuiEvent::FocusLost)));
         assert!(!terminal_focused.load(Ordering::Relaxed));
@@ -489,7 +557,7 @@ mod tests {
         let mut startup_events = make_stream(broker, draw_rx, terminal_focused);
 
         assert!(tui.is_terminal_focused());
-        handle.send(Ok(Event::FocusLost));
+        handle.send(Ok(EventWithColor::Event(Event::FocusLost)));
 
         assert!(matches!(
             startup_events.next().await,
@@ -505,8 +573,8 @@ mod tests {
         let mut stream = make_stream(broker.clone(), draw_rx, terminal_focused.clone());
         let expected_key = KeyEvent::new(KeyCode::Char('f'), KeyModifiers::NONE);
 
-        handle.send(Ok(Event::FocusGained));
-        handle.send(Ok(Event::Key(expected_key)));
+        handle.send(Ok(EventWithColor::Event(Event::FocusGained)));
+        handle.send(Ok(EventWithColor::Event(Event::Key(expected_key))));
 
         assert!(matches!(stream.next().await, Some(TuiEvent::FocusGained)));
         assert!(terminal_focused.load(Ordering::Relaxed));
@@ -535,7 +603,7 @@ mod tests {
 
         let expected_key = KeyEvent::new(KeyCode::Char('a'), KeyModifiers::NONE);
         let _ = draw_tx.send(());
-        handle.send(Ok(Event::Key(expected_key)));
+        handle.send(Ok(EventWithColor::Event(Event::Key(expected_key))));
 
         let first = stream.next().await.unwrap();
         let second = stream.next().await.unwrap();
@@ -576,7 +644,7 @@ mod tests {
         let (broker, handle, _draw_tx, draw_rx, terminal_focused) = setup();
         let mut stream = make_stream(broker, draw_rx, terminal_focused);
 
-        handle.send(Ok(Event::Resize(80, 24)));
+        handle.send(Ok(EventWithColor::Event(Event::Resize(80, 24))));
 
         let next = stream.next().await;
         assert!(matches!(
@@ -611,7 +679,7 @@ mod tests {
 
         broker.resume_events();
         let expected_key = KeyEvent::new(KeyCode::Char('r'), KeyModifiers::NONE);
-        handle.send(Ok(Event::Key(expected_key)));
+        handle.send(Ok(EventWithColor::Event(Event::Key(expected_key))));
 
         let event = timeout(Duration::from_millis(100), task)
             .await
@@ -634,7 +702,7 @@ mod tests {
         broker.pause_events();
         broker.resume_events();
         let expected_key = KeyEvent::new(KeyCode::Char('p'), KeyModifiers::NONE);
-        handle.send(Ok(Event::Key(expected_key)));
+        handle.send(Ok(EventWithColor::Event(Event::Key(expected_key))));
 
         let event = timeout(Duration::from_millis(100), task)
             .await

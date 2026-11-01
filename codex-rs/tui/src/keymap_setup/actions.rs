@@ -120,6 +120,7 @@ define_keymap_actions! {
         open_external_editor => "Open the current draft in an external editor.",
         copy => "Copy the last agent response to the clipboard.",
         clear_terminal => "Clear the terminal UI.",
+        refresh_colors => "Refresh terminal colors.",
         toggle_vim_mode => "Turn Vim composer mode on or off.",
         toggle_fast_mode [FastMode] => "Turn Fast mode on or off.",
         toggle_raw_output => "Toggle raw scrollback mode.",

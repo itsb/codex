@@ -151,6 +151,8 @@ pub struct TuiGlobalKeymap {
     pub copy: Option<KeybindingsSpec>,
     /// Clear the terminal UI.
     pub clear_terminal: Option<KeybindingsSpec>,
+    /// Refresh terminal foreground and background colors without changing input or dialogs.
+    pub refresh_colors: Option<KeybindingsSpec>,
     /// Submit the current composer draft.
     pub submit: Option<KeybindingsSpec>,
     /// Queue the current composer draft while a task is running.

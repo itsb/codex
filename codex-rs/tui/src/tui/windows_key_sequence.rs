@@ -21,7 +21,7 @@ use crossterm::event::KeyModifiers;
 use tokio::time::Sleep;
 use tokio_stream::Stream;
 
-use super::event_stream::EventResult;
+type EventResult = std::io::Result<Event>;
 
 const SEQUENCE: [KeyCode; 7] = [
     KeyCode::Esc,

@@ -148,6 +148,25 @@ async fn resize_reflow_preserves_explicitly_unlimited_history() {
 }
 
 #[tokio::test]
+async fn color_refresh_replays_committed_history_from_source() -> Result<()> {
+    let mut app = make_test_app().await;
+    app.transcript_cells = plain_history_cells(/*count*/ 2);
+    let mut tui = crate::tui::test_support::make_test_tui()?;
+
+    app.refresh_scrollback_colors(&mut tui, Size::new(/*width*/ 80, /*height*/ 24))?;
+
+    let tail = app
+        .last_rendered_history_tail
+        .as_ref()
+        .expect("color refresh should rebuild the rendered history tail");
+    assert_eq!(
+        tail.lines.last().map(rendered_line_text),
+        Some("cell 1".to_string())
+    );
+    Ok(())
+}
+
+#[tokio::test]
 async fn capped_resize_reflow_prepends_transcript_notice_without_changing_transcript() {
     let mut app = make_test_app().await;
     app.local_settings.tui.terminal_resize_reflow_max_rows = Some(8);

@@ -372,6 +372,22 @@ mod tests {
     }
 
     #[test]
+    fn refresh_colors_command_popup_snapshot() {
+        let mut popup = CommandPopup::new(CommandPopupFlags::default(), Vec::new());
+        popup.on_composer_text_change("/refresh".to_string());
+        let width = 80;
+        let area = Rect::new(
+            /*x*/ 0,
+            /*y*/ 0,
+            width,
+            popup.calculate_required_height(width),
+        );
+        let mut buf = Buffer::empty(area);
+        popup.render_ref(area, &mut buf);
+        insta::assert_snapshot!("command_popup_refresh_colors", format!("{buf:?}"));
+    }
+
+    #[test]
     fn filter_includes_init_when_typing_prefix() {
         let mut popup = CommandPopup::new(CommandPopupFlags::default(), Vec::new());
         // Simulate the composer line starting with '/in' so the popup filters

@@ -29,7 +29,8 @@ impl App {
             | TuiEvent::Resume
             | TuiEvent::Resize(_)
             | TuiEvent::FocusGained
-            | TuiEvent::FocusLost => false,
+            | TuiEvent::FocusLost
+            | TuiEvent::ColorsChanged => false,
         };
         if self.backtrack.primed
             && !self.backtrack.overlay_preview_active

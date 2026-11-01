@@ -315,7 +315,7 @@ pub(crate) fn build_theme_picker_params(
     terminal_width: Option<u16>,
 ) -> SelectionViewParams {
     // Snapshot the current theme so we can restore on cancel.
-    let original_theme = highlight::current_syntax_theme();
+    let preview = highlight::ThemePreview::begin();
 
     let entries = highlight::list_available_themes(codex_home);
     let codex_home_owned = codex_home.map(Path::to_path_buf);
@@ -348,12 +348,14 @@ pub(crate) fn build_theme_picker_params(
                 initial_idx = Some(idx);
             }
             let name_for_action = entry.name.clone();
+            let preview = preview.clone();
             SelectionItem {
                 name: display_name,
                 is_current,
                 dismiss_on_select: true,
                 search_value: Some(entry.name.clone()),
                 actions: vec![Box::new(move |tx| {
+                    preview.confirm();
                     tx.send(AppEvent::SyntaxThemeSelected {
                         name: name_for_action.clone(),
                     });
@@ -383,7 +385,7 @@ pub(crate) fn build_theme_picker_params(
     // Restore original theme on cancel.
     let on_cancel = Some(
         Box::new(move |tx: &crate::app_event_sender::AppEventSender| {
-            highlight::set_syntax_theme(original_theme.clone());
+            preview.cancel();
             tx.send(AppEvent::SyntaxThemePreviewed);
         }) as Box<dyn Fn(&crate::app_event_sender::AppEventSender) + Send + Sync>,
     );

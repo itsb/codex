@@ -34,7 +34,10 @@ impl LinkHover {
                     mouse.modifiers = key.modifiers;
                 }
             }
-            TuiEvent::FocusLost | TuiEvent::Resize(_) | TuiEvent::Resume => self.mouse = None,
+            TuiEvent::FocusLost
+            | TuiEvent::Resize(_)
+            | TuiEvent::Resume
+            | TuiEvent::ColorsChanged => self.mouse = None,
             _ => {}
         }
     }

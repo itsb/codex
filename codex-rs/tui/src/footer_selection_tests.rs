@@ -119,16 +119,18 @@ fn release_copy_and_cross_surface_drags_use_only_visible_text() {
             .is_none()
     );
     assert!(!selection.view.has_active_interaction());
-    // Resize invalidates both the highlight and its pointer anchor.
-    selection.handle_event(&mouse(Down(Left), /*column*/ 0, /*row*/ 1), &buffer);
-    selection.handle_event(&mouse(Drag(Left), /*column*/ 3, /*row*/ 1), &buffer);
-    selection.handle_event(
-        &TuiEvent::Resize(ratatui::layout::Size::new(
+    // Geometry and palette changes invalidate the frozen surface and its pointer anchor.
+    for event in [
+        TuiEvent::Resize(ratatui::layout::Size::new(
             /*width*/ 10, /*height*/ 2,
         )),
-        &buffer,
-    );
-    assert!(!selection.view.has_active_interaction());
+        TuiEvent::ColorsChanged,
+    ] {
+        selection.handle_event(&mouse(Down(Left), /*column*/ 0, /*row*/ 1), &buffer);
+        selection.handle_event(&mouse(Drag(Left), /*column*/ 3, /*row*/ 1), &buffer);
+        selection.handle_event(&event, &buffer);
+        assert!(!selection.view.has_active_interaction());
+    }
 }
 
 #[test]

@@ -394,7 +394,11 @@ impl App {
         let select_exit_key = Self::transcript_select_exit_key(&event);
         if matches!(
             &event,
-            TuiEvent::Draw | TuiEvent::Resume | TuiEvent::Resize(_) | TuiEvent::FocusGained
+            TuiEvent::Draw
+                | TuiEvent::Resume
+                | TuiEvent::Resize(_)
+                | TuiEvent::FocusGained
+                | TuiEvent::ColorsChanged
         ) {
             self.chat_widget.refresh_terminal_program_status();
         }
@@ -409,7 +413,11 @@ impl App {
         if (input
             || matches!(
                 &event,
-                TuiEvent::Draw | TuiEvent::Resume | TuiEvent::Resize(_) | TuiEvent::FocusGained
+                TuiEvent::Draw
+                    | TuiEvent::Resume
+                    | TuiEvent::Resize(_)
+                    | TuiEvent::FocusGained
+                    | TuiEvent::ColorsChanged
             ))
             && let Some(Overlay::Transcript(t)) = &mut self.overlay
         {
