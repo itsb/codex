@@ -29,13 +29,13 @@ async fn color_replies_preserve_interleaved_keys_paste_and_escape_and_skip_uncha
     let broker = Arc::new(EventBroker::<Source>::new());
     let (tx, rx) = mpsc::unbounded_channel();
     *broker.state.lock().unwrap() = EventBrokerState::Running(Source(rx));
-    let (_draw_tx, draw_rx) = broadcast::channel(1);
+    let (_draw_tx, draw_rx) = broadcast::channel(/*capacity*/ 1);
     let mut stream = TuiEventStream::new(
         broker.clone(),
         draw_rx,
-        Arc::new(AtomicBool::new(true)),
+        Arc::new(AtomicBool::new(/*v*/ true)),
         crate::tui::job_control::SuspendContext::new(),
-        Arc::new(AtomicBool::new(false)),
+        Arc::new(AtomicBool::new(/*v*/ false)),
     );
     let key = KeyEvent::new(KeyCode::Char('a'), KeyModifiers::NONE);
     let escape = KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE);

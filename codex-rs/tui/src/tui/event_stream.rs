@@ -38,6 +38,10 @@ use tokio_stream::wrappers::errors::BroadcastStreamRecvError;
 use super::TuiEvent;
 use super::size_monitor::SizeMonitor;
 
+#[cfg(all(test, unix))]
+#[path = "event_stream_color_tests.rs"]
+mod color_tests;
+
 /// Result type produced by an event source.
 pub type EventResult = std::io::Result<EventWithColor>;
 
@@ -372,8 +376,7 @@ impl<S: EventSource + Default + Unpin> TuiEventStream<S> {
                 #[cfg(unix)]
                 self.broker
                     .refresh_colors(super::color_refresh::RefreshReason::Focus);
-                // Keep the startup-cached palette: querying terminal colors here blocks the
-                // input loop, and a direct probe would discard keys typed during the refresh.
+                // Replies share the input broker so a refresh preserves keys typed on focus.
                 Some(TuiEvent::FocusGained)
             }
             Event::FocusLost => {

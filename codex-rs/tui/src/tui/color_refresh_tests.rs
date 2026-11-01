@@ -25,12 +25,12 @@ async fn complete_pair_and_focus_cooldown_manual_bypass() {
     refresh.request(RefreshReason::Focus, &mut output);
     assert_eq!(output, query);
     refresh.request(RefreshReason::Manual, &mut output);
-    assert_eq!(output, query.repeat(2));
+    assert_eq!(output, query.repeat(/*n*/ 2));
     refresh.report(&fg, &mut output);
     refresh.report(&bg, &mut output);
     tokio::time::advance(TIMEOUT).await;
     refresh.request(RefreshReason::Focus, &mut output);
-    assert_eq!(output, query.repeat(3));
+    assert_eq!(output, query.repeat(/*n*/ 3));
 }
 
 #[tokio::test(start_paused = true)]
@@ -51,10 +51,10 @@ async fn duplicate_requests_coalesce_but_theme_schedules_one_follow_up() {
     let [fg, bg] = reports(COLORS);
     refresh.report(&fg, &mut output);
     assert_eq!(refresh.report(&bg, &mut output), Some(COLORS));
-    assert_eq!(output, query.repeat(2));
+    assert_eq!(output, query.repeat(/*n*/ 2));
     refresh.report(&fg, &mut output);
     assert_eq!(refresh.report(&bg, &mut output), Some(COLORS));
-    assert_eq!(output, query.repeat(2));
+    assert_eq!(output, query.repeat(/*n*/ 2));
 }
 
 #[tokio::test(start_paused = true)]
@@ -91,7 +91,7 @@ async fn deadline_wakes_without_input_and_runs_pending_theme_query() {
         }
     })
     .await;
-    assert_eq!(output, query.repeat(2));
+    assert_eq!(output, query.repeat(/*n*/ 2));
 }
 
 #[tokio::test]

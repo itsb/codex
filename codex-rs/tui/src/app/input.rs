@@ -586,6 +586,11 @@ impl App {
             return;
         }
 
+        if self.keymap.app.refresh_colors.is_pressed(key_event) {
+            tui.refresh_colors();
+            return;
+        }
+
         let app_keymap_shortcuts_available = self.app_keymap_shortcuts_available();
         if app_keymap_shortcuts_available
             && self

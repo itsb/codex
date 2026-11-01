@@ -4,8 +4,10 @@ use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
 
 pub(crate) fn set_automatic_theme() {
-    set_syntax_theme(resolve_theme_with_override(None, None));
-    AUTOMATIC_THEME.store(true, Ordering::Release);
+    set_syntax_theme(resolve_theme_with_override(
+        /*name*/ None, /*codex_home*/ None,
+    ));
+    AUTOMATIC_THEME.store(/*val*/ true, Ordering::Release);
 }
 
 pub(crate) fn refresh_terminal_colors() {
@@ -28,17 +30,17 @@ impl ThemePreview {
     pub(crate) fn begin() -> Arc<Self> {
         Arc::new(Self {
             original: current_syntax_theme(),
-            automatic: AUTOMATIC_THEME.swap(false, Ordering::AcqRel),
-            finished: AtomicBool::new(false),
+            automatic: AUTOMATIC_THEME.swap(/*val*/ false, Ordering::AcqRel),
+            finished: AtomicBool::new(/*v*/ false),
         })
     }
 
     pub(crate) fn confirm(&self) {
-        self.finished.store(true, Ordering::Release);
+        self.finished.store(/*val*/ true, Ordering::Release);
     }
 
     pub(crate) fn cancel(&self) {
-        if !self.finished.swap(true, Ordering::AcqRel) {
+        if !self.finished.swap(/*val*/ true, Ordering::AcqRel) {
             if self.automatic {
                 set_automatic_theme();
             } else {

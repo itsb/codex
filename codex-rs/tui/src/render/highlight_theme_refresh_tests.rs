@@ -17,7 +17,7 @@ fn automatic_theme_follows_palette_and_preview_cancel_uses_current_palette() {
         set_automatic_theme();
         let original = current_syntax_theme();
         let preview = ThemePreview::begin();
-        let selected = resolve_theme_by_name("dracula", None).unwrap();
+        let selected = resolve_theme_by_name("dracula", /*codex_home*/ None).unwrap();
         set_syntax_theme(selected.clone());
         with_test_default_colors(dark, || {
             refresh_terminal_colors();
@@ -25,7 +25,7 @@ fn automatic_theme_follows_palette_and_preview_cancel_uses_current_palette() {
             preview.cancel();
             assert_eq!(
                 current_syntax_theme().settings,
-                resolve_theme_with_override(None, None).settings
+                resolve_theme_with_override(/*name*/ None, /*codex_home*/ None).settings
             );
         });
         refresh_terminal_colors();

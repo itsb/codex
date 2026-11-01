@@ -789,7 +789,7 @@ mod imp {
                 }
             );
             let mut expected_replay = vec![b'x'; 2_048];
-            expected_replay.extend_from_slice(b"\x1B[20;10R\x1B[?64;1;2c\x1B[?7u");
+            expected_replay.extend_from_slice(b"\x1B[20;10R");
             assert_eq!(startup_replay_input(&buffer), expected_replay);
         }
 

@@ -51,6 +51,10 @@ mod voice_tests;
 mod global_find_tests;
 
 #[cfg(test)]
+#[path = "keymap/color_refresh_tests.rs"]
+mod color_refresh_tests;
+
+#[cfg(test)]
 #[path = "keymap/select_transcript_tests.rs"]
 mod select_transcript_tests;
 
@@ -120,6 +124,8 @@ pub(crate) struct AppKeymap {
     pub(crate) copy: Vec<KeyBinding>,
     /// Clear the terminal UI.
     pub(crate) clear_terminal: Vec<KeyBinding>,
+    /// Refresh the terminal palette while preserving the current surface.
+    pub(crate) refresh_colors: Vec<KeyBinding>,
     /// Toggle Vim mode for the composer input.
     pub(crate) toggle_vim_mode: Vec<KeyBinding>,
     /// Toggle Fast mode.
@@ -756,6 +762,11 @@ impl RuntimeKeymap {
                 keymap.global.clear_terminal.as_ref(),
                 &defaults.app.clear_terminal,
                 "tui.keymap.global.clear_terminal",
+            )?,
+            refresh_colors: resolve_bindings(
+                keymap.global.refresh_colors.as_ref(),
+                &defaults.app.refresh_colors,
+                "tui.keymap.global.refresh_colors",
             )?,
             toggle_vim_mode: resolve_bindings(
                 keymap.global.toggle_vim_mode.as_ref(),
@@ -1487,6 +1498,10 @@ impl RuntimeKeymap {
                 app.clear_terminal.as_slice(),
             ),
             (
+                keymap.global.refresh_colors.as_ref(),
+                app.refresh_colors.as_slice(),
+            ),
+            (
                 keymap.global.toggle_vim_mode.as_ref(),
                 app.toggle_vim_mode.as_slice(),
             ),
@@ -1699,6 +1714,7 @@ impl RuntimeKeymap {
                 open_external_editor: default_bindings![ctrl(KeyCode::Char('g'))],
                 copy: default_bindings![ctrl(KeyCode::Char('o'))],
                 clear_terminal: default_bindings![ctrl(KeyCode::Char('l'))],
+                refresh_colors: default_bindings![],
                 toggle_vim_mode: default_bindings![],
                 toggle_fast_mode: default_bindings![],
                 toggle_raw_output: default_bindings![alt(KeyCode::Char('r'))],
@@ -2039,6 +2055,7 @@ impl RuntimeKeymap {
         #[cfg(unix)]
         for (action, bindings) in [
             ("global.open_agents", &self.app.open_agents),
+            ("global.refresh_colors", &self.app.refresh_colors),
             ("chat.open_presets", &self.chat.open_presets),
             ("chat.toggle_voice", &self.chat.toggle_voice),
         ] {
@@ -2079,6 +2096,7 @@ impl RuntimeKeymap {
             ),
             ("copy", self.app.copy.as_slice()),
             ("clear_terminal", self.app.clear_terminal.as_slice()),
+            ("refresh_colors", self.app.refresh_colors.as_slice()),
             ("toggle_vim_mode", self.app.toggle_vim_mode.as_slice()),
             ("toggle_fast_mode", self.app.toggle_fast_mode.as_slice()),
             ("toggle_raw_output", self.app.toggle_raw_output.as_slice()),
@@ -2187,6 +2205,7 @@ impl RuntimeKeymap {
                 ),
                 ("copy", self.app.copy.as_slice()),
                 ("clear_terminal", self.app.clear_terminal.as_slice()),
+                ("refresh_colors", self.app.refresh_colors.as_slice()),
                 ("toggle_vim_mode", self.app.toggle_vim_mode.as_slice()),
                 ("toggle_fast_mode", self.app.toggle_fast_mode.as_slice()),
                 ("toggle_raw_output", self.app.toggle_raw_output.as_slice()),
@@ -2247,6 +2266,7 @@ impl RuntimeKeymap {
                 ),
                 ("copy", self.app.copy.as_slice()),
                 ("clear_terminal", self.app.clear_terminal.as_slice()),
+                ("refresh_colors", self.app.refresh_colors.as_slice()),
                 ("chat.open_presets", self.chat.open_presets.as_slice()),
                 ("chat.toggle_voice", self.chat.toggle_voice.as_slice()),
                 (

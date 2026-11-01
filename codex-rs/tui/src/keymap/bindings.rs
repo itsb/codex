@@ -293,6 +293,7 @@ define_runtime_action_bindings! {
         open_external_editor,
         copy,
         clear_terminal,
+        refresh_colors,
         toggle_vim_mode,
         toggle_fast_mode,
         toggle_raw_output,

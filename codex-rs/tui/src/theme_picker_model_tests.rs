@@ -27,6 +27,7 @@ fn model_theme_files_preview_select_and_restore() {
         return;
     }
     let original = highlight::current_syntax_theme();
+    highlight::set_syntax_theme(original.clone());
     let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
     let tx = AppEventSender::new(tx);
     let mut snapshot = String::new();
@@ -77,16 +78,27 @@ fn model_theme_files_preview_select_and_restore() {
                 .map(|cell| format!("{:?}", cell.style()))
                 .collect::<std::collections::BTreeSet<_>>();
             snapshot.push_str(&format!("preview styles: {styles:?}\nsyntax: {lines:?}\n"));
-            params.items[idx].actions[0](&tx);
-            assert!(
-                matches!(rx.try_recv().unwrap(), AppEvent::SyntaxThemeSelected { name: selected } if selected == name)
-            );
             params.on_cancel.as_ref().unwrap()(&tx);
             assert!(matches!(
                 rx.try_recv().unwrap(),
                 AppEvent::SyntaxThemePreviewed
             ));
             assert_eq!(highlight::current_syntax_theme(), original);
+
+            let params = build_theme_picker_params(Some(name), /*codex_home*/ None, Some(120));
+            params.on_selection_changed.as_ref().unwrap()(idx, &tx);
+            assert!(matches!(
+                rx.try_recv().unwrap(),
+                AppEvent::SyntaxThemePreviewed
+            ));
+            let selected_theme = highlight::current_syntax_theme();
+            params.items[idx].actions[0](&tx);
+            assert!(
+                matches!(rx.try_recv().unwrap(), AppEvent::SyntaxThemeSelected { name: selected } if selected == name)
+            );
+            drop(params);
+            assert_eq!(highlight::current_syntax_theme(), selected_theme);
+            highlight::set_syntax_theme(original.clone());
         });
     }
     insta::assert_snapshot!(snapshot);

@@ -10,7 +10,7 @@ use std::time::Duration;
 use tokio::io::AsyncReadExt;
 use tokio::process::Command;
 
-const PROBE_TIMEOUT: Duration = Duration::from_millis(100);
+const PROBE_TIMEOUT: Duration = Duration::from_millis(/*millis*/ 100);
 const MAX_OUTPUT: usize = 8192;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

@@ -62,7 +62,7 @@ pub(crate) use streaming::StreamingCodeHighlighter;
 // -- Global singletons -------------------------------------------------------
 
 static SYNTAX_SET: OnceLock<SyntaxSet> = OnceLock::new();
-static AUTOMATIC_THEME: AtomicBool = AtomicBool::new(true);
+static AUTOMATIC_THEME: AtomicBool = AtomicBool::new(/*v*/ true);
 #[cfg(not(test))]
 static THEME: OnceLock<RwLock<Theme>> = OnceLock::new();
 #[cfg(not(test))]
@@ -268,7 +268,7 @@ fn theme_lock() -> impl std::ops::Deref<Target = RwLock<Theme>> {
 
 /// Swap the active syntax theme at runtime and invalidate rendered-content caches.
 pub(crate) fn set_syntax_theme(theme: Theme) {
-    AUTOMATIC_THEME.store(false, Ordering::Release);
+    AUTOMATIC_THEME.store(/*val*/ false, Ordering::Release);
     let active_theme = theme_lock();
     let mut guard = match active_theme.write() {
         Ok(guard) => guard,
@@ -283,9 +283,9 @@ pub(crate) fn set_syntax_theme(theme: Theme) {
 
 pub(crate) fn bump_syntax_theme_revision() {
     #[cfg(not(test))]
-    THEME_REVISION.fetch_add(1, Ordering::Release);
+    THEME_REVISION.fetch_add(/*val*/ 1, Ordering::Release);
     #[cfg(test)]
-    TEST_THEME_REVISION.with(|revision| revision.set(revision.get().wrapping_add(1)));
+    TEST_THEME_REVISION.with(|revision| revision.set(revision.get().wrapping_add(/*rhs*/ 1)));
 }
 
 #[path = "highlight_theme_refresh.rs"]

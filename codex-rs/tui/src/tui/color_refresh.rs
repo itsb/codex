@@ -14,7 +14,7 @@ use std::time::Duration;
 use tokio::time::Instant;
 use tokio::time::Sleep;
 
-const TIMEOUT: Duration = Duration::from_secs(1);
+const TIMEOUT: Duration = Duration::from_secs(/*secs*/ 1);
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(crate) enum RefreshReason {
