@@ -12,11 +12,16 @@ on:
         required: true
         default: false
         type: boolean
+      validated_run_id:
+        description: "Reuse packages from a successful release-workflow run at the version's existing tag"
+        required: false
+        type: string
   push:
     tags:
       - "itsb-v*.*.*"
 
 permissions:
+  actions: read
   contents: write
   id-token: write
 
@@ -26,6 +31,7 @@ env:
 
 jobs:
   build:
+    if: ${{ !inputs.validated_run_id }}
     name: Build ${{ matrix.target }}
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 150
@@ -222,16 +228,12 @@ jobs:
 
   release:
     needs: build
+    if: ${{ always() && (needs.build.result == 'success' || (github.event_name == 'workflow_dispatch' && inputs.validated_run_id != '')) }}
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
         with:
-          # Uploaded paths already include the dist/ prefix. Download into the
-          # workspace so release assets land at dist/<name>, not dist/dist/<name>.
-          path: .
-          pattern: itsb-*
-          merge-multiple: true
+          ref: ${{ inputs.validated_run_id && format('itsb-v{0}', inputs.version) || github.ref }}
 
       - name: Determine version and tag
         id: version
@@ -248,6 +250,67 @@ jobs:
           fi
           echo "value=$version" >> "$GITHUB_OUTPUT"
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
+
+      - name: Verify validated source run
+        if: ${{ inputs.validated_run_id != '' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_RUN_ID: ${{ inputs.validated_run_id }}
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          import subprocess
+
+          run_id = os.environ["SOURCE_RUN_ID"]
+          if not run_id.isascii() or not run_id.isdecimal():
+              raise SystemExit("validated_run_id must be a numeric workflow run ID")
+          repository = os.environ["GITHUB_REPOSITORY"]
+          run = json.loads(subprocess.check_output([
+              "gh", "api", f"repos/{repository}/actions/runs/{run_id}"
+          ]))
+          commit = subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip()
+          expected = {
+              "conclusion": "success",
+              "head_sha": commit,
+              "path": ".github/workflows/itsb-codex-release.yml",
+          }
+          if any(run.get(key) != value for key, value in expected.items()) or (
+              run.get("head_repository", {}).get("full_name") != repository
+          ):
+              raise SystemExit("source run must be a successful release workflow at the tagged commit")
+          print(f"Promoting validated run {run_id} at {commit}")
+          PY
+
+      - uses: actions/download-artifact@v4
+        with:
+          # Preserve dist/ paths and verify the source run before cross-run downloads.
+          path: .
+          pattern: itsb-*
+          merge-multiple: true
+          github-token: ${{ github.token }}
+          run-id: ${{ inputs.validated_run_id || github.run_id }}
+
+      - name: Verify platform package versions
+        env:
+          VERSION: ${{ steps.version.outputs.value }}
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          import tarfile
+
+          for platform in ("darwin-arm64", "linux-x64"):
+              archives = list(Path(".").rglob(f"itsb-codex-{platform}.tgz"))
+              if len(archives) != 1:
+                  raise SystemExit(f"expected one archive for {platform}, found {len(archives)}")
+              with tarfile.open(archives[0]) as archive:
+                  package = json.load(archive.extractfile("package/package.json"))
+              expected = (f"@itsbfb/codex-{platform}", f"{os.environ['VERSION']}-{platform}")
+              if (package["name"], package["version"]) != expected:
+                  raise SystemExit(f"package identity mismatch for {platform}")
+          PY
 
       - name: Assemble @itsbfb/codex launcher package
         env:
@@ -290,7 +353,7 @@ jobs:
           done
 
       - name: Create GitHub Release
-        if: ${{ github.event_name == 'push' }}
+        if: ${{ github.event_name == 'push' || inputs.publish_npm == true }}
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.version.outputs.tag }}
