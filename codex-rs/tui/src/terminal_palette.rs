@@ -89,7 +89,7 @@ fn best_color_for_color_level(target: (u8, u8, u8), color_level: StdoutColorLeve
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Eq, PartialEq)]
 pub struct DefaultColors {
     fg: (u8, u8, u8),
     bg: (u8, u8, u8),
@@ -142,6 +142,18 @@ pub(crate) fn set_default_colors_from_startup_probe(
     colors: Option<crate::terminal_probe::DefaultColors>,
 ) {
     imp::set_default_colors_from_startup_probe(colors);
+}
+
+/// Commit both colors together; incomplete and unchanged replies never invalidate rendering.
+#[cfg(unix)]
+pub(crate) fn update_default_colors(colors: crate::terminal_probe::DefaultColors) -> bool {
+    let next = DefaultColors { fg: colors.fg, bg: colors.bg };
+    if default_colors() == Some(next) { return false; }
+    #[cfg(test)]
+    TEST_DEFAULT_COLORS.with(|colors| colors.set(Some(next)));
+    #[cfg(not(test))]
+    imp::set_default_colors_from_startup_probe(Some(colors));
+    true
 }
 
 #[cfg(any(all(unix, not(test)), windows))]

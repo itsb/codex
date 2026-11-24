@@ -4147,6 +4147,7 @@ impl App {
                     }
                 }
             }
+            AppEvent::RefreshColors => tui.refresh_colors(),
             AppEvent::SyntaxThemePreviewed => {
                 self.refresh_status_line();
                 tui.frame_requester().schedule_frame();
