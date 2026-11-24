@@ -86,7 +86,7 @@ async fn run_lifecycle_modal<T>(
                         tui.frame_requester().schedule_frame();
                     }
                     tui::TuiEvent::Key(_) | tui::TuiEvent::Paste(_) | tui::TuiEvent::FocusLost | tui::TuiEvent::Mouse(_) => {}
-                    tui::TuiEvent::Draw | tui::TuiEvent::Resize(_) | tui::TuiEvent::Resume | tui::TuiEvent::FocusGained => {
+                    tui::TuiEvent::ColorsChanged | tui::TuiEvent::Draw | tui::TuiEvent::Resize(_) | tui::TuiEvent::Resume | tui::TuiEvent::FocusGained => {
                         app.expire_pending_key_chord(tui);
                         app.render_chat_widget_frame(tui, screen_size)?;
                     }

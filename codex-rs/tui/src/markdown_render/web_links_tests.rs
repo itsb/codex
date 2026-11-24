@@ -1,6 +1,6 @@
 use super::WebLinkDisplay;
-use crate::markdown_render::MarkdownStyles;
 use super::tmux_hyperlinks::TmuxHyperlinks;
+use crate::markdown_render::MarkdownStyles;
 use crate::markdown_render::render_markdown_lines_with_width_cwd_and_hidden_link_destinations;
 use crate::markdown_render::render_streaming_markdown_lines_with_width_and_cwd;
 use crate::style::accent_color;

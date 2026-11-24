@@ -1334,7 +1334,11 @@ impl App {
 
         let draws_history = matches!(
             event,
-            TuiEvent::Draw | TuiEvent::Resume | TuiEvent::Resize(_) | TuiEvent::FocusGained
+            TuiEvent::ColorsChanged
+                | TuiEvent::Draw
+                | TuiEvent::Resume
+                | TuiEvent::Resize(_)
+                | TuiEvent::FocusGained
         );
         if self.overlay.is_some() {
             let _ = self
@@ -1387,7 +1391,11 @@ impl App {
                         );
                     }
                 }
-                TuiEvent::Draw | TuiEvent::Resume | TuiEvent::Resize(_) | TuiEvent::FocusGained => {
+                TuiEvent::ColorsChanged
+                | TuiEvent::Draw
+                | TuiEvent::Resume
+                | TuiEvent::Resize(_)
+                | TuiEvent::FocusGained => {
                     if self.backtrack_render_pending && !tui.is_owned_screen() {
                         self.rebuild_transcript_after_backtrack(tui, screen_size.into())?;
                         self.backtrack_render_pending = false;

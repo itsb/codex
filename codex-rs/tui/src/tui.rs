@@ -64,6 +64,8 @@ use codex_config::types::NotificationCondition;
 use codex_config::types::NotificationMethod;
 
 mod alternate_screen;
+#[cfg(unix)]
+mod color_refresh;
 mod event_stream;
 mod frame_rate_limiter;
 mod frame_requester;
@@ -261,6 +263,8 @@ fn set_modes() -> Result<tmux::Options> {
     execute!(stdout(), EnableBracketedPaste)?;
 
     enable_raw_mode()?;
+    #[cfg(unix)]
+    color_refresh::subscribe(&mut stdout())?;
     #[cfg(windows)]
     windows_console::set_input_record_mode()?;
     // Enable keyboard enhancement flags so modifiers for keys like Enter are disambiguated.
@@ -364,6 +368,10 @@ fn restore_common(
         first_error.get_or_insert(err);
     }
     let _ = execute!(stdout(), DisableFocusChange);
+    #[cfg(unix)]
+    if let Err(err) = color_refresh::restore(&mut stdout()) {
+        first_error.get_or_insert(err);
+    }
     if raw_mode_restore == RawModeRestore::DrainAndDisable {
         #[cfg(unix)]
         if let Err(err) = crate::terminal_probe::wait_for_exit_reports() {
@@ -696,6 +704,7 @@ pub enum TuiEvent {
     FocusGained,
     /// A terminal focus notification indicating that the terminal or tab became inactive.
     FocusLost,
+    ColorsChanged,
 }
 
 /// Controls whether the TUI requests mouse events from the terminal.
@@ -785,6 +794,11 @@ where
 }
 
 impl Tui {
+    pub(crate) fn refresh_colors(&self) {
+        #[cfg(unix)]
+        self.event_broker
+            .refresh_colors(color_refresh::RefreshReason::Manual);
+    }
     pub(crate) fn is_alt_screen_enabled(&self) -> bool {
         self.alt_screen_enabled
     }

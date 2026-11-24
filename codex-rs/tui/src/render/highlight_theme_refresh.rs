@@ -13,7 +13,7 @@ pub(crate) fn refresh_terminal_colors() {
         set_automatic_theme();
     } else {
         // Diff, markdown, and active-cell caches also depend on the terminal palette.
-        THEME_REVISION.fetch_add(1, Ordering::Release);
+        bump_syntax_theme_revision();
     }
 }
 
