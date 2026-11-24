@@ -127,8 +127,8 @@ jobs:
         env:
           VERSION: ${{ steps.version.outputs.value }}
           TARGET: ${{ matrix.target }}
-          # Limit concurrent release code generation on standard macOS runners.
-          CARGO_BUILD_JOBS: ${{ runner.os == 'macOS' && '2' || '4' }}
+          # Limit concurrent release code generation to keep hosted runner memory stable.
+          CARGO_BUILD_JOBS: "2"
           GIT_CONFIG_COUNT: "1"
           GIT_CONFIG_KEY_0: http.version
           GIT_CONFIG_VALUE_0: HTTP/1.1
