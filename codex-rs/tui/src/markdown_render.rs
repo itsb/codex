@@ -110,7 +110,6 @@ mod list_spacing_tests;
 #[path = "markdown_render/task_list_tests.rs"]
 mod task_list_tests;
 pub(crate) use web_links::hide_web_link_destination;
-
 /// Find file destinations in source order, including Codex file citations.
 pub(crate) fn file_links(input: &str, cwd: Option<&Path>) -> Vec<FileLink> {
     let options = Options::ENABLE_STRIKETHROUGH | Options::ENABLE_TABLES;
@@ -132,6 +131,7 @@ pub(crate) fn file_links(input: &str, cwd: Option<&Path>) -> Vec<FileLink> {
 pub(crate) fn hide_reader_link_destination(destination: &str) -> bool {
     hide_web_link_destination(destination) || local_links::sidebar_file_link(destination).is_some()
 }
+pub(crate) use web_links::probe_tmux_hyperlinks;
 use web_links::style_bare_web_urls;
 
 const TABLE_COLUMN_GAP: usize = 2;
