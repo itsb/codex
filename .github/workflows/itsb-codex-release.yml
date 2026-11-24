@@ -34,7 +34,7 @@ jobs:
     if: ${{ !inputs.validated_run_id }}
     name: Build ${{ matrix.target }}
     runs-on: ${{ matrix.runner }}
-    timeout-minutes: 150
+    timeout-minutes: 360
     strategy:
       fail-fast: false
       matrix:
