@@ -37,9 +37,9 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::sync::OnceLock;
 use std::sync::RwLock;
+use std::sync::atomic::AtomicBool;
 #[cfg(not(test))]
 use std::sync::atomic::AtomicU64;
-#[cfg(not(test))]
 use std::sync::atomic::Ordering;
 use syntect::easy::HighlightLines;
 use syntect::highlighting::Color as SyntectColor;
@@ -62,6 +62,7 @@ pub(crate) use streaming::StreamingCodeHighlighter;
 // -- Global singletons -------------------------------------------------------
 
 static SYNTAX_SET: OnceLock<SyntaxSet> = OnceLock::new();
+static AUTOMATIC_THEME: AtomicBool = AtomicBool::new(true);
 #[cfg(not(test))]
 static THEME: OnceLock<RwLock<Theme>> = OnceLock::new();
 #[cfg(not(test))]
@@ -120,6 +121,7 @@ pub(crate) fn set_theme_override(
             codex_home.as_deref(),
         ));
     }
+    AUTOMATIC_THEME.store(name.is_none() || warning.is_some(), Ordering::Release);
     if !override_set_ok || !codex_home_set_ok {
         // This should never happen in practice — set_theme_override is only
         // called once at startup.  Keep as a debug breadcrumb in case a second
@@ -266,6 +268,7 @@ fn theme_lock() -> impl std::ops::Deref<Target = RwLock<Theme>> {
 
 /// Swap the active syntax theme at runtime and invalidate rendered-content caches.
 pub(crate) fn set_syntax_theme(theme: Theme) {
+    AUTOMATIC_THEME.store(false, Ordering::Release);
     let active_theme = theme_lock();
     let mut guard = match active_theme.write() {
         Ok(guard) => guard,
@@ -277,6 +280,19 @@ pub(crate) fn set_syntax_theme(theme: Theme) {
     #[cfg(test)]
     TEST_THEME_REVISION.with(|revision| revision.set(revision.get().wrapping_add(1)));
 }
+
+pub(crate) fn bump_syntax_theme_revision() {
+    #[cfg(not(test))]
+    THEME_REVISION.fetch_add(1, Ordering::Release);
+    #[cfg(test)]
+    TEST_THEME_REVISION.with(|revision| revision.set(revision.get().wrapping_add(1)));
+}
+
+#[path = "highlight_theme_refresh.rs"]
+mod theme_refresh;
+pub(crate) use theme_refresh::ThemePreview;
+pub(crate) use theme_refresh::refresh_terminal_colors;
+pub(crate) use theme_refresh::set_automatic_theme;
 
 /// Return the revision of the active syntax theme for rendered-content caches.
 pub(crate) fn syntax_theme_revision() -> u64 {

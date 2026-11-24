@@ -25,7 +25,8 @@ impl App {
             TuiEvent::Key(key) => key.code != KeyCode::Esc && key.kind != KeyEventKind::Release,
             TuiEvent::Mouse(mouse) => mouse.kind != crossterm::event::MouseEventKind::Moved,
             TuiEvent::Paste(text) => !text.is_empty(),
-            TuiEvent::Draw
+            TuiEvent::ColorsChanged
+            | TuiEvent::Draw
             | TuiEvent::Resume
             | TuiEvent::Resize(_)
             | TuiEvent::FocusGained

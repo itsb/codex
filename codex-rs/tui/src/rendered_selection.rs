@@ -115,7 +115,7 @@ impl RenderedSelection {
             | TuiEvent::Resize(_)
             | TuiEvent::FocusLost
             | TuiEvent::Resume => {}
-            TuiEvent::Draw | TuiEvent::FocusGained => return None,
+            TuiEvent::ColorsChanged | TuiEvent::Draw | TuiEvent::FocusGained => return None,
         }
         self.clear();
         None

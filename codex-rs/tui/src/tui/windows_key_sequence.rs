@@ -21,7 +21,7 @@ use crossterm::event::KeyModifiers;
 use tokio::time::Sleep;
 use tokio_stream::Stream;
 
-use super::event_stream::EventResult;
+type WindowsEventResult = std::io::Result<Event>;
 
 const SEQUENCE: [KeyCode; 7] = [
     KeyCode::Esc,
@@ -40,7 +40,7 @@ pub(super) struct WindowsKeySequence<S> {
     pending: Vec<KeyEvent>,
     next: usize,
     deadline: Option<Pin<Box<Sleep>>>,
-    ready: VecDeque<EventResult>,
+    ready: VecDeque<WindowsEventResult>,
     final_release: Option<KeyEvent>,
 }
 
@@ -117,8 +117,8 @@ impl<S> WindowsKeySequence<S> {
     }
 }
 
-impl<S: Stream<Item = EventResult> + Unpin> Stream for WindowsKeySequence<S> {
-    type Item = EventResult;
+impl<S: Stream<Item = WindowsEventResult> + Unpin> Stream for WindowsKeySequence<S> {
+    type Item = WindowsEventResult;
 
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         let this = self.get_mut();

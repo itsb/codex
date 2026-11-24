@@ -174,7 +174,10 @@ impl App {
             PasteSource::Primary => MouseButton::Middle,
         };
         let keep = match event {
-            TuiEvent::Draw | TuiEvent::Resize(_) | TuiEvent::FocusGained => true,
+            TuiEvent::ColorsChanged
+            | TuiEvent::Draw
+            | TuiEvent::Resize(_)
+            | TuiEvent::FocusGained => true,
             TuiEvent::Mouse(mouse) => {
                 mouse.kind == MouseEventKind::Moved
                     || (pending.shortcut.is_none()

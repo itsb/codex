@@ -1437,7 +1437,8 @@ impl App {
                     None
                 }
             }
-            TuiEvent::Draw
+            TuiEvent::ColorsChanged
+            | TuiEvent::Draw
             | TuiEvent::Resume
             | TuiEvent::Resize(_)
             | TuiEvent::FocusGained

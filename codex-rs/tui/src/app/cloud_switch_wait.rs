@@ -107,7 +107,8 @@ fn handle_cloud_switch_event(
                 .handle_paste(text.replace("\r\n", "\n").replace('\r', "\n"));
             show_cloud_switch_hint(app, progress);
         }
-        tui::TuiEvent::Draw
+        tui::TuiEvent::ColorsChanged
+        | tui::TuiEvent::Draw
         | tui::TuiEvent::Resize(_)
         | tui::TuiEvent::Resume
         | tui::TuiEvent::FocusGained => {
