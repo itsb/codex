@@ -5624,6 +5624,7 @@
               "change_host": null,
               "choose_cloud_environment": null,
               "clear_terminal": null,
+              "refresh_colors": null,
               "close_sidebar_tab": null,
               "copy": null,
               "equalize_pane_widths": null,
@@ -6504,6 +6505,12 @@
             }
           ],
           "description": "Clear the terminal UI."
+        },
+        "refresh_colors": {
+          "allOf": [
+            { "$ref": "#/definitions/KeybindingsSpec" }
+          ],
+          "description": "Refresh terminal foreground and background colors without changing input or dialogs."
         },
         "close_sidebar_tab": {
           "allOf": [
