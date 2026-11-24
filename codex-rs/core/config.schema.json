@@ -6879,6 +6879,7 @@
             "change_host": null,
             "choose_cloud_environment": null,
             "clear_terminal": null,
+            "refresh_colors": null,
             "close_sidebar_tab": null,
             "copy": null,
             "equalize_pane_widths": null,
