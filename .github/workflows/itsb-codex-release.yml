@@ -375,7 +375,7 @@ jobs:
           done
 
       - name: Create GitHub Release
-        if: ${{ github.event_name == 'push' || inputs.publish_npm == true }}
+        if: ${{ (github.event_name == 'push' || inputs.publish_npm == true) && inputs.validated_run_id == '' }}
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.version.outputs.tag }}
