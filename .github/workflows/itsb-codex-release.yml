@@ -240,7 +240,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.validated_run_id && format('itsb-v{0}', inputs.version) || github.ref }}
+          ref: ${{ github.ref }}
+          fetch-depth: 0
 
       - name: Determine version and tag
         id: version
@@ -266,6 +267,7 @@ jobs:
           echo "flavor=$flavor" >> "$GITHUB_OUTPUT"
 
       - name: Verify validated source run
+        id: validated_source
         if: ${{ inputs.validated_run_id != '' }}
         env:
           GH_TOKEN: ${{ github.token }}
@@ -283,16 +285,22 @@ jobs:
           run = json.loads(subprocess.check_output([
               "gh", "api", f"repos/{repository}/actions/runs/{run_id}"
           ]))
-          commit = subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip()
           expected = {
               "conclusion": "success",
-              "head_sha": commit,
               "path": ".github/workflows/itsb-codex-release.yml",
           }
           if any(run.get(key) != value for key, value in expected.items()) or (
               run.get("head_repository", {}).get("full_name") != repository
           ):
-              raise SystemExit("source run must be a successful release workflow at the tagged commit")
+              raise SystemExit("source run must be a successful release workflow from this repository")
+          source_sha = run["head_sha"]
+          subprocess.run(["git", "cat-file", "-e", f"{source_sha}^{{commit}}"], check=True)
+          subprocess.run(["git", "checkout", "--detach", source_sha], check=True)
+          commit = subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip()
+          if commit != source_sha:
+              raise SystemExit("could not check out validated source commit")
+          with open(os.environ["GITHUB_OUTPUT"], "a") as output:
+              output.write(f"sha={source_sha}\n")
           print(f"Promoting validated run {run_id} at {commit}")
           PY
 
@@ -371,6 +379,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.version.outputs.tag }}
+          target_commitish: ${{ steps.validated_source.outputs.sha || github.sha }}
           name: ${{ steps.version.outputs.value }}
           generate_release_notes: true
           files: dist/*
