@@ -22,12 +22,12 @@ on:
 
 permissions:
   actions: read
+  contents: write
+  id-token: write
 
 concurrency:
   group: itsb-codex-npm-release
   cancel-in-progress: false
-  contents: write
-  id-token: write
 
 env:
   CODEX_REPO_ROOT: ${{ github.workspace }}
