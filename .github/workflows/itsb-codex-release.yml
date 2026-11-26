@@ -373,6 +373,12 @@ jobs:
             if [[ -n "$source" ]]; then cp "$source" "dist/$asset"; fi
             test -f "dist/$asset"
           done
+          # npm rejects the unoptimized Linux archive above its ~200 MB payload
+          # limit; recompress platform tarballs more tightly without changing contents.
+          for asset in dist/itsb-codex-darwin-arm64.tgz dist/itsb-codex-linux-x64.tgz; do
+            gzip -dc "$asset" | gzip -9 -n > "$asset.tmp"
+            mv "$asset.tmp" "$asset"
+          done
 
       - name: Create GitHub Release
         if: ${{ (github.event_name == 'push' || inputs.publish_npm == true) && inputs.validated_run_id == '' }}
