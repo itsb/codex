@@ -21,6 +21,129 @@ use tempfile::TempDir;
 const STARTUP_TIMEOUT: Duration = Duration::from_secs(/*secs*/ 30);
 const FOCUS_INPUT_TIMEOUT: Duration = Duration::from_secs(/*secs*/ 5);
 const FOCUS_PROBE_INPUT: &str = "focus-palette-24527";
+const PALETTE_CHANGE_TIMEOUT: Duration = Duration::from_secs(/*secs*/ 8);
+const DARK_PALETTE_REPLY: &[u8] =
+    b"\x1b]10;rgb:ffff/ffff/ffff\x1b\\\x1b]11;rgb:0000/0000/0000\x1b\\";
+
+#[test]
+fn terminal_theme_changes_repaint_composer_without_losing_draft() -> Result<()> {
+    let repo_root = codex_utils_cargo_bin::repo_root()?;
+    let codex_home = tempfile::tempdir()?;
+    write_test_config_with_bundled_models(codex_home.path(), &repo_root)?;
+
+    let codex = codex_utils_cargo_bin::cargo_bin("codex-tui")
+        .or_else(|_| codex_utils_cargo_bin::cargo_bin("codex"))?;
+    let mut terminal = PtyCodex::start_binary_with(
+        &codex,
+        &repo_root,
+        codex_home,
+        &["--no-daemon", "--no-alt-screen"],
+        /*editor*/ None,
+        |command| {
+            command.env_remove("NO_COLOR").env("FORCE_COLOR", "3");
+        },
+    )?;
+    terminal.wait_for_startup_with_palette(
+        b"\x1b]10;rgb:0000/0000/0000\x1b\\\x1b]11;rgb:ffff/ffff/ffff\x1b\\",
+    )?;
+
+    let mut draft = "palette-draft".to_owned();
+    let startup_offset = terminal.output.len();
+    terminal.write_input(draft.as_bytes())?;
+    let dark = b"rgb:0000/0000/0000";
+    let light = b"rgb:ffff/ffff/ffff";
+    wait_for_composer_palette(
+        &mut terminal,
+        &draft,
+        startup_offset,
+        dark,
+        light,
+        /*expect_light*/ true,
+    )?;
+
+    for (notification, input, fg, bg, is_light) in [
+        (b"\x1b[?997;1n", "-dark", light, dark, false),
+        (b"\x1b[?997;2n", "-light", dark, light, true),
+    ] {
+        let offset = terminal.output.len();
+        // Queue input before answering any queries caused by the theme notification.
+        terminal.write_input(notification)?;
+        terminal.write_input(input.as_bytes())?;
+        draft.push_str(input);
+        wait_for_composer_palette(&mut terminal, &draft, offset, fg, bg, is_light)?;
+    }
+    Ok(())
+}
+
+fn wait_for_composer_palette(
+    terminal: &mut PtyCodex,
+    draft: &str,
+    offset: usize,
+    foreground: &[u8],
+    background: &[u8],
+    expect_light: bool,
+) -> Result<()> {
+    let deadline = Instant::now() + PALETTE_CHANGE_TIMEOUT;
+    let mut queries = [
+        (
+            b"\x1b]10;?".as_slice(),
+            b"\x1b]10;".as_slice(),
+            foreground,
+            offset,
+        ),
+        (
+            b"\x1b]11;?".as_slice(),
+            b"\x1b]11;".as_slice(),
+            background,
+            offset,
+        ),
+    ];
+    let mut observed = None;
+    while Instant::now() < deadline {
+        terminal.read_output(Duration::from_millis(/*millis*/ 20))?;
+        for (query, prefix, color, cursor) in &mut queries {
+            // Answer each color independently so this also handles sequential queries.
+            if let Some(position) = terminal.output[*cursor..]
+                .windows(query.len())
+                .position(|bytes| bytes == *query)
+            {
+                *cursor += position + query.len();
+                terminal.write_input(&[*prefix, *color, b"\x1b\\"].concat())?;
+            }
+        }
+        terminal.ensure_running()?;
+
+        let screen = terminal.parser.screen();
+        let (_, cols) = screen.size();
+        observed = screen
+            .rows(/*start*/ 0, cols)
+            .enumerate()
+            .find_map(|(row, line)| {
+                let prefix = line.trim_end().strip_suffix(draft)?;
+                if prefix.trim() != "›" {
+                    return None;
+                }
+                screen
+                    .cell(
+                        u16::try_from(row).ok()?,
+                        u16::try_from(prefix.chars().count()).ok()?,
+                    )
+                    .map(vt100::Cell::bgcolor)
+            });
+        if let Some(vt100::Color::Rgb(r, g, b)) = observed
+            && [r, g, b]
+                .into_iter()
+                .all(|channel| (channel >= 128) == expect_light)
+        {
+            return Ok(());
+        }
+    }
+    let expected = if expect_light { "light" } else { "dark" };
+    bail!(
+        "expected a {expected} composer background for draft {draft:?}, observed {observed:?}; screen:\n{}",
+        terminal.screen_contents(),
+    );
+}
 
 #[path = "external_editor_tests.rs"]
 mod external_editor;
@@ -342,6 +465,17 @@ impl PtyCodex {
         extra_args: &[&str],
         editor: Option<&Path>,
     ) -> Result<Self> {
+        Self::start_binary_with(codex, repo_root, codex_home, extra_args, editor, |_| {})
+    }
+
+    fn start_binary_with(
+        codex: &Path,
+        repo_root: &Path,
+        codex_home: TempDir,
+        extra_args: &[&str],
+        editor: Option<&Path>,
+        configure: impl FnOnce(&mut Command),
+    ) -> Result<Self> {
         let mut master_fd = -1;
         let mut slave_fd = -1;
         let mut window_size = libc::winsize {
@@ -374,6 +508,7 @@ impl PtyCodex {
         let stdout = slave.try_clone().context("clone pseudo-terminal stdout")?;
 
         let mut command = Command::new(codex);
+        configure(&mut command);
         if let Some(editor) = editor {
             command.env("VISUAL", editor);
         }
@@ -415,10 +550,14 @@ impl PtyCodex {
     }
 
     pub(super) fn wait_for_startup(&mut self) -> Result<()> {
+        self.wait_for_startup_with_palette(DARK_PALETTE_REPLY)
+    }
+
+    fn wait_for_startup_with_palette(&mut self, palette_reply: &[u8]) -> Result<()> {
         let deadline = Instant::now() + STARTUP_TIMEOUT;
         while Instant::now() < deadline {
             self.read_output(Duration::from_millis(/*millis*/ 50))?;
-            self.answer_startup_queries()?;
+            self.answer_startup_queries_with_palette(palette_reply)?;
 
             if self.palette_answered && self.screen_contains("OpenAI Codex") {
                 return Ok(());
@@ -472,6 +611,10 @@ impl PtyCodex {
     }
 
     fn answer_startup_queries(&mut self) -> Result<()> {
+        self.answer_startup_queries_with_palette(DARK_PALETTE_REPLY)
+    }
+
+    fn answer_startup_queries_with_palette(&mut self, palette_reply: &[u8]) -> Result<()> {
         if !self.cursor_answered && contains_bytes(&self.output, b"\x1b[6n") {
             self.write_input(b"\x1b[1;1R")?;
             self.cursor_answered = true;
@@ -489,7 +632,7 @@ impl PtyCodex {
             && contains_bytes(&self.output, b"\x1b]10;?")
             && contains_bytes(&self.output, b"\x1b]11;?")
         {
-            self.write_input(b"\x1b]10;rgb:ffff/ffff/ffff\x1b\\\x1b]11;rgb:0000/0000/0000\x1b\\")?;
+            self.write_input(palette_reply)?;
             self.palette_answered = true;
         }
 
